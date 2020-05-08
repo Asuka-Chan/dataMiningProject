@@ -52,7 +52,7 @@ library(e1071)
 
 ```{r, cache = TRUE}
 # Importing teh data directly from Excel
-customer.data <- read_excel("Downloads/ltv Dataset.xlsx", sheet = "Sheet1")
+customer.data <- read_excel("./ltv Dataset.xlsx", sheet = "Sheet1")
 ```
 
 ```{r, cache = TRUE}
@@ -164,6 +164,54 @@ view(aggregatedCustomerSums)
 ```
 
 ## 3.	Develop a customer segmentation scheme. Include in this scheme the identification of sleeping customers, those that are no longer active but have not canceled their account.
+
+- Segmentation 1: Regular(users who have completed regularly irrespective of holidays), Sleeping, Holiday User(holiday based customers),  Inactive (canceled)  
+
+- Variable Completed, pages, onsite, holiday
+
+- data preprocssing:
+```{r}
+aggregatedCustomerSums$holiday.ratio <- aggregatedCustomerSums$holiday/aggregatedCustomerSums$completed
+summary(aggregatedCustomerSums$holiday.ratio)
+```
+```{r}
+aggregatedCustomerSums$holiday.user <- ifelse(aggregatedCustomerSums$holiday.ratio>0.4573,1,0)
+```
+
+active = 1
+Sleeping = 2
+Inactive (canceled) = 3
+```{r}
+width = length(customer.data)
+len = length(customer.data$id)
+user.type = rep(0, times = len)
+previd = customer.data[1][1]
+startid = previd
+for(i in seq(len)){
+  startid = customer.data[i,1]
+  if(customer.data[i,2] == 2){
+    user.type[i] = 3
+  }else if(startid!=previd){
+    diff = (as.Date('12/31/2014','%m/%d/%Y') - customer.data[i,4])
+    if(diff>60){
+      user.type[i] = 2
+    }else{
+      user.type[i] = 1
+    }
+  }else{
+    user.type[i] = 1
+  }
+  previd = startid
+}
+customer.data$userType <- user.type
+
+```
+```{r}
+(as.Date('12/31/2014','%m/%d/%Y') - customer.data[1,4])
+```
+```{r}
+summary(customer.data$date)
+```
 
 
 - Segmentation 2: Decisive customers, Tentative customers, Hesitant customers
