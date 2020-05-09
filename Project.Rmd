@@ -217,16 +217,15 @@ customer.data$userType <- user.type
 ```{r}
 #select the data we need
 #customer.data.segOne <- customer.data %>% group_by(id) %>% filter(date == max(date)) 
-customer.data.segOne <- subset(customer.data,select = c('pages','onsite', 'entered', 'completed','userType', 'status'))
+customer.data.segOne <- subset(customer.data,select = c('pages','onsite', 'userType'))#, 'entered', 'completed'))
 #split into training and test dataset
 
 customer.data.segOne <- transform(
   customer.data.segOne,
   pages=as.integer(pages),
   onsite=as.integer(onsite),
-  entered=as.integer(entered),
-  completed=as.integer(completed),
-  status=as.integer(status),
+  #entered=as.factor(entered),
+  #completed=as.factor(completed),
   userType = as.factor(userType)
 )
 
