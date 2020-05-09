@@ -238,22 +238,19 @@ test.segOne<-customer.data.segOne[-dt,]
 ```{r}
 set.seed(42)
 
-# remove missing vlaues before this call
 customer.segOne.rf <- ranger(
   as.factor(userType) ~ ., 
   data = train.segOne, 
   importance = "impurity",
-  num.trees = 200
+  num.trees = 2000
 )
-customer.segOne.rf.predict <- predict(customer.segOne.rf, test.segOne)
+customer.segOne.pred <- predict(customer.segOne.rf, test.segOne)
 
-customer.segOne.rf.table <- table(customer.segOne.rf.predict, test.segOne$userType)
-customer.segOne.rf.table
+customer.segOne.rfResult<- table(test.segOne$userType, predictions(customer.segOne.pred))
+customer.segOne.rfResult
 
-# calculate the accuracy of our random forest model
-customer.segOne.rf.misclassificationrate = mean(customer.segOne.rf.predict != test.segOne$userType)
-customer.rf.segOneaccuracy <- 1- customer.segOne.rf.misclassificationrate
-customer.rf.segOneaccuracy
+accuracy<- sum(diag(customer.segOne.rfResult)) / sum(customer.segOne.rfResult)
+accuracy
 ```
 
 ```{r}
