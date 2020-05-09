@@ -53,7 +53,7 @@ library(ranger)
 
 ```{r, cache = TRUE}
 # Importing teh data directly from Excel
-customer.data <- read_excel("./ltv Dataset.xlsx", sheet = "Sheet1")
+customer.data <- read_excel("C://Users//nelli//Downloads//ltv Dataset.xlsx", sheet = "Sheet1")
 ```
 
 ```{r, cache = TRUE}
@@ -166,9 +166,13 @@ view(aggregatedCustomerSums)
 
 ## 3.	Develop a customer segmentation scheme. Include in this scheme the identification of sleeping customers, those that are no longer active but have not canceled their account.
 
-- Segmentation 1: Regular(users who have completed regularly irrespective of holidays), Sleeping, Holiday User(holiday based customers),  Inactive (canceled)  
+# Segmentation 1: Segmentation 1: Regular(users who have completed regularly irrespective of holidays), Sleeping, Holiday User(holiday based customers),  Inactive (canceled)
 
-- Variable Completed, pages, onsite, holiday
+- Variables: Completed, pages, onsite, entered
+- Classification label: Regular/Sleeping/Inactive
+  - 3: if the customer has browsed the website >60 days of `12/31/2014` then classify the customer as sleeping.
+  - 2: if all the variables of related to that customer is 0 then we classfy the customer as a inactive.
+  - 1: if the customer has recently browsed the website has been active within 60 days of `12/31/2014` then classify the customer as active.
 
 - data preprocssing:
 ```{r}
@@ -212,7 +216,8 @@ customer.data$userType <- user.type
 
 ```{r}
 #select the data we need
-customer.data.segOne <- subset(customer.data,select = c('pages','onsite','entered','completed','userType'))
+#customer.data.segOne <- customer.data %>% group_by(id) %>% filter(date == max(date)) 
+customer.data.segOne <- subset(customer.data,select = c('pages','onsite', 'entered', 'completed','userType', 'status'))
 #split into training and test dataset
 
 customer.data.segOne <- transform(
@@ -221,7 +226,8 @@ customer.data.segOne <- transform(
   onsite=as.integer(onsite),
   entered=as.integer(entered),
   completed=as.integer(completed),
-  userType = as.integer(userType)
+  status=as.integer(status),
+  userType = as.factor(userType)
 )
 
 dt = sort(sample(nrow(customer.data.segOne), nrow(customer.data.segOne)*.7))
@@ -238,9 +244,10 @@ customer.segOne.rf <- ranger(
   as.factor(userType) ~ ., 
   data = train.segOne, 
   importance = "impurity",
-  num.trees = 2000
+  num.trees = 200
 )
 customer.segOne.rf.predict <- predict(customer.segOne.rf, test.segOne)
+
 customer.segOne.rf.table <- table(customer.segOne.rf.predict, test.segOne$userType)
 customer.segOne.rf.table
 
@@ -264,7 +271,45 @@ customer.knn.segOne.misclassificationrate = mean(customer.knn.segOne.predict != 
 customer.knn.segOne.accuracy <- 1- customer.knn.segOne.misclassificationrate
 customer.knn.segOne.accuracy
 ```
+# Logistic Regression
+
+```{r}
+#create the logistic regression model with output as userType and inputs as pages, onsite, entered and completed.
+customer.segOne.lr <- multinom(train.segOne$userType ~ . , data = train.segOne)
+customer.segOne.lr
+
+#test the model classification on the test data
+customer.segOne.lr.pred <- predict(customer.segOne.lr,newdata=test.segOne)
+
+#create a confusion matrix
+customer.segOne.lr.conf <-table(customer.segOne.lr.pred, test.segOne$userType)
+prop.table(customer.segOne.lr.conf)
+
+#determine the accuracy of the model
+customer.segOne.lr.accuracy<- sum(diag(customer.segOne.lr.conf)) / sum(customer.segOne.lr.conf)
+customer.segOne.lr.accuracy
 ```
+
+# Naive Bayes
+
+```{r}
+#Construct a naive bayes classification model on the train data set
+customer.segOne.nb <-naiveBayes(train.segOne$userType ~ ., data = train.segOne)
+customer.segOne.nb
+
+#test the model classification on the test data
+customer.segOne.nb.pred <- predict(customer.segOne.nb, newdata=test.segOne)
+
+#create a confusion matrix
+customer.segOne.nb.conf <-table(customer.segOne.nb.pred, test.segOne$userType)
+prop.table(customer.segOne.nb.conf)
+
+#determine the accuracy of the model
+customer.segOne.nb.accuracy<- sum(diag(customer.segOne.nb.conf)) / sum(customer.segOne.nb.conf)
+customer.segOne.nb.accuracy
+
+```
+
 
 - Segmentation 2: Decisive customers, Tentative customers, Hesitant customers
 - Variables: Gender, onsite, pages, entered, completed
