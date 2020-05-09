@@ -48,6 +48,7 @@ library(class)
 library(DMwR)
 library(nnet)
 library(e1071)
+library(ranger)
 ```
 
 ```{r, cache = TRUE}
@@ -192,9 +193,10 @@ for(i in seq(len)){
   if(customer.data[i,2] == 2){
     user.type[i] = 3
   }else if(startid!=previd){
-    diff = (as.Date('12/31/2014','%m/%d/%Y') - customer.data[i,4])
+    diff = (as.Date('12/31/2014','%m/%d/%Y') - customer.data[i-1,4])
     if(diff>60){
-      user.type[i] = 2
+      user.type[i-1] = 2
+      user.type[i] = 1
     }else{
       user.type[i] = 1
     }
@@ -206,13 +208,63 @@ for(i in seq(len)){
 customer.data$userType <- user.type
 
 ```
+
+
 ```{r}
-(as.Date('12/31/2014','%m/%d/%Y') - customer.data[1,4])
-```
-```{r}
-summary(customer.data$date)
+#select the data we need
+customer.data.segOne <- subset(customer.data,select = c('pages','onsite','entered','completed','userType'))
+#split into training and test dataset
+
+customer.data.segOne <- transform(
+  customer.data.segOne,
+  pages=as.integer(pages),
+  onsite=as.integer(onsite),
+  entered=as.integer(entered),
+  completed=as.integer(completed),
+  userType = as.integer(userType)
+)
+
+dt = sort(sample(nrow(customer.data.segOne), nrow(customer.data.segOne)*.7))
+train.segOne<-customer.data.segOne[dt,]
+test.segOne<-customer.data.segOne[-dt,]
 ```
 
+#random forest
+```{r}
+set.seed(42)
+
+# remove missing vlaues before this call
+customer.segOne.rf <- ranger(
+  as.factor(userType) ~ ., 
+  data = train.segOne, 
+  importance = "impurity",
+  num.trees = 2000
+)
+customer.segOne.rf.predict <- predict(customer.segOne.rf, test.segOne)
+customer.segOne.rf.table <- table(customer.segOne.rf.predict, test.segOne$userType)
+customer.segOne.rf.table
+
+# calculate the accuracy of our random forest model
+customer.segOne.rf.misclassificationrate = mean(customer.segOne.rf.predict != test.segOne$userType)
+customer.rf.segOneaccuracy <- 1- customer.segOne.rf.misclassificationrate
+customer.rf.segOneaccuracy
+```
+
+```{r}
+# KNN
+train_control <- trainControl(method = "cv", number = 10)
+customer.knn.segOne <- train(userType~., data = train.segOne, trControl = train_control, method = "knn")
+customer.knn.segOne
+customer.knn.segOne.predict <- predict(customer.knn.segOne, test.segOne)
+customer.knn.segOne.table <- table(customer.knn.segOne.predict, test.segOne$userType)
+customer.knn.segOne.table
+
+# calculate the accuracy of our random forest model
+customer.knn.segOne.misclassificationrate = mean(customer.knn.segOne.predict != test.segOne$userType)
+customer.knn.segOne.accuracy <- 1- customer.knn.segOne.misclassificationrate
+customer.knn.segOne.accuracy
+```
+```
 
 - Segmentation 2: Decisive customers, Tentative customers, Hesitant customers
 - Variables: Gender, onsite, pages, entered, completed
