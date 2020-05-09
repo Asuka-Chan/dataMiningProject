@@ -221,7 +221,7 @@ customer.data.segOne <- transform(
   onsite=as.integer(onsite),
   entered=as.integer(entered),
   completed=as.integer(completed),
-  userType = as.integer(userType)
+  userType = as.factor(userType)
 )
 
 dt = sort(sample(nrow(customer.data.segOne), nrow(customer.data.segOne)*.7))
@@ -240,20 +240,19 @@ customer.segOne.rf <- ranger(
   importance = "impurity",
   num.trees = 2000
 )
-customer.segOne.rf.predict <- predict(customer.segOne.rf, test.segOne)
-customer.segOne.rf.table <- table(customer.segOne.rf.predict, test.segOne$userType)
-customer.segOne.rf.table
+customer.segOne.pred <- predict(customer.segOne.rf, test.segOne)
 
-# calculate the accuracy of our random forest model
-customer.segOne.rf.misclassificationrate = mean(customer.segOne.rf.predict != test.segOne$userType)
-customer.rf.segOneaccuracy <- 1- customer.segOne.rf.misclassificationrate
-customer.rf.segOneaccuracy
+customer.segOne.rfResult<- table(test.segOne$userType, predictions(customer.segOne.pred))
+customer.segOne.rfResult
+
+accuracy<- sum(diag(customer.segOne.rfResult)) / sum(customer.segOne.rfResult)
+accuracy
 ```
 
-```{r}
 # KNN
-train_control <- trainControl(method = "cv", number = 10)
-customer.knn.segOne <- train(userType~., data = train.segOne, trControl = train_control, method = "knn")
+```{r}
+train_control <- trainControl(method = "cv", number = 5)
+customer.knn.segOne <- train(userType~., data = train.segOne, method = "knn")
 customer.knn.segOne
 customer.knn.segOne.predict <- predict(customer.knn.segOne, test.segOne)
 customer.knn.segOne.table <- table(customer.knn.segOne.predict, test.segOne$userType)
@@ -264,6 +263,38 @@ customer.knn.segOne.misclassificationrate = mean(customer.knn.segOne.predict != 
 customer.knn.segOne.accuracy <- 1- customer.knn.segOne.misclassificationrate
 customer.knn.segOne.accuracy
 ```
+```
+
+# Logistic Regression
+
+```{r}
+#create the logistic regression model with output as userType and inputs as pages, onsite, entered and completed.
+customer.segOne.lr <- multinom(train.segOne$userType ~ . , data = train.segOne)
+customer.segOne.lr
+#test the model classification on the test data
+customer.segOne.lr.pred <- predict(customer.segOne.lr,newdata=test.segOne)
+#create a confusion matrix
+customer.segOne.lr.conf <-table(customer.segOne.lr.pred, test.segOne$userType)
+prop.table(customer.segOne.lr.conf)
+#determine the accuracy of the model
+customer.segOne.lr.accuracy<- sum(diag(customer.segOne.lr.conf)) / sum(customer.segOne.lr.conf)
+customer.segOne.lr.accuracy
+```
+
+# Naive Bayes
+
+```{r}
+#Construct a naive bayes classification model on the train data set
+customer.segOne.nb <-naiveBayes(train.segOne$userType ~ ., data = train.segOne)
+customer.segOne.nb
+#test the model classification on the test data
+customer.segOne.nb.pred <- predict(customer.segOne.nb, newdata=test.segOne)
+#create a confusion matrix
+customer.segOne.nb.conf <-table(customer.segOne.nb.pred, test.segOne$userType)
+prop.table(customer.segOne.nb.conf)
+#determine the accuracy of the model
+customer.segOne.nb.accuracy<- sum(diag(customer.segOne.nb.conf)) / sum(customer.segOne.nb.conf)
+customer.segOne.nb.accuracy
 ```
 
 - Segmentation 2: Decisive customers, Tentative customers, Hesitant customers
@@ -378,3 +409,10 @@ svm.accuracy
 ```
 
 ## Random forest is the best
+
+```{r}
+
+for(i in seq(len)){
+  
+}
+```
