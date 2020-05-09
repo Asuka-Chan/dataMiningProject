@@ -253,21 +253,6 @@ accuracy<- sum(diag(customer.segOne.rfResult)) / sum(customer.segOne.rfResult)
 accuracy
 ```
 
-# KNN
-```{r}
-train_control <- trainControl(method = "cv", number = 5)
-customer.knn.segOne <- train(userType~., data = train.segOne, method = "knn")
-customer.knn.segOne
-customer.knn.segOne.predict <- predict(customer.knn.segOne, test.segOne)
-customer.knn.segOne.table <- table(customer.knn.segOne.predict, test.segOne$userType)
-customer.knn.segOne.table
-
-# calculate the accuracy of our random forest model
-customer.knn.segOne.misclassificationrate = mean(customer.knn.segOne.predict != test.segOne$userType)
-customer.knn.segOne.accuracy <- 1- customer.knn.segOne.misclassificationrate
-customer.knn.segOne.accuracy
-```
-
 # Logistic Regression
 
 ```{r}
