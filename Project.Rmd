@@ -51,6 +51,8 @@ library(e1071)
 library(ranger)
 library(glmnet)
 library(cluster)
+library(ggdendro)
+
 ```
 
 ```{r, cache = TRUE}
@@ -116,7 +118,9 @@ write.csv(ltv.m1,'ltv_modelOne.csv',row.names = FALSE)
 #along with the latest status 
 customer.lifespan <- customer.data[, c("id", "date", "status")] %>% group_by(id)
 customer.lifespan <-customer.lifespan %>% mutate(maxDate = max(date)) 
-customer.lifespan <-customer.lifespan %>% mutate(status = max(status)) 
+#we can asssume that a maxstatus of 0 => that the user just created the account and did not login 
+#after, we will consider such a scenario as active
+customer.lifespan <-customer.lifespan %>% mutate(status = ifelse(max(status)==0, 1,max(status))) 
 customer.lifespan <- customer.lifespan %>% filter(date == min(date)) %>% distinct(id, .keep_all = TRUE) %>% rename(minDate = date)
 #Subtract the maxDate and minDate to determine the number of days of subscription
 customer.lifespan$subDays <- as.integer(difftime(customer.lifespan$maxDate, customer.lifespan$minDate, units = "days"))
@@ -139,10 +143,12 @@ customer.data$lifespan <- customer.lifespan$lifespan[match(customer.data$id,cust
 
 customer.overall.means <- aggregate(customer.data[, c("pages", "onsite", "completed")], list(customer.data$id), mean)
 customer.overall.means <- customer.overall.means %>% rename(id = Group.1)
+customer.overall.means$lastStatus <- customer.lifespan$status
+customer.overall.means$lifespan <- customer.lifespan$lifespan
 #determine the logins in the first month, last and the last but one 
-customer.firstMonth.logins <- ltv.logins  %>%  filter(row_number()==1) %>% select("id", "count")
-customer.previousMonth.logins <- ltv.logins  %>%  filter(row_number()==n()-1) %>% select("id",  "count")
-customer.lastMonth.logins <- ltv.logins  %>%  filter(row_number()==n()) %>% select("id", "count")
+customer.firstMonth.logins <- ltv.logins  %>%  filter(row_number()==1) %>% dplyr::select("id", "count")
+customer.previousMonth.logins <- ltv.logins  %>%  filter(row_number()==n()-1) %>% dplyr::select("id",  "count")
+customer.lastMonth.logins <- ltv.logins  %>%  filter(row_number()==n()) %>% dplyr::select("id", "count")
 
 #determine the login ratios of lastMonth to first and the last month to the last but on
 len = length(customer.overall.means$id)
@@ -156,8 +162,8 @@ for (i in seq(length(customer.overall.means$id))) {
     #print(curId)
     prevMonthLogins <- lastMonthLogins
   }
-  customer.overall.means$lastToFirstLoginRatio[i] <- lastMonthLogins/firstMonthLogins
-  customer.overall.means$lastToPrevLoginRatio[i] <- lastMonthLogins/prevMonthLogins
+  customer.overall.means$lastToFirstLoginRatio[i] <- as.numeric(lastMonthLogins/firstMonthLogins)
+  customer.overall.means$lastToPrevLoginRatio[i] <- as.numeric(lastMonthLogins/prevMonthLogins)
 }
 
 
@@ -195,29 +201,71 @@ aggregatedCustomerSums <- rename(aggregatedCustomerSums, id = Customerid, pages 
 
 ## 1.	Develop an attrition model, to predict whether a customer will cancel their subscription in the near future. Characterize your model performance.
 
-- First Method: predict lifespan of different segments customer
+#First Method: predict whether a customer will cancel their subscription in the near future based on different segments customer
+
+We will try to determine if we can segment the customers into buckets and determine 
+if any behaviour related to their average online time, completed orders can be used to 
+predict whether a customer will cancel their subscription in the near future
 
 ```{r}
-#testing not correct
 
-std.customer <- na.omit(customer.overall.means) # listwise deletion of missing
-std.customer <- scale(std.customer) # standardize variables
+#Heirarchical Clustering
+# we create a 70% data partition from the subset of customers who cancelled
+cancelled.customers = createDataPartition(customer.overall.means$id[which(customer.overall.means$lastStatus == 2)],l=F, p = 0.7)
+# we create a 30% data partition from the subset of customers who are active
+active.customers = createDataPartition(customer.overall.means$id[which(customer.overall.means$lastStatus == 1)],l=F, p = 0.3)
 
-wss <- (nrow(std.customer)-1)*sum(apply(std.customer,2,var))
-for (i in 2:15) wss[i] <- sum(kmeans(std.customer,
-   centers=i)$withinss)
-plot(1:15, wss, type="b", xlab="Number of Clusters",
-  ylab="Within groups sum of squares")
+customer.train <- rbind(active.customers, cancelled.customers)
 
-km.res <- kmeans(std.customer, 4, nstart = 25)
-str(km.res)
+scalled.customer = scale(customer.overall.means)
+cancelled.customers.train = customer.overall.means[customer.train, ]
+cancelled.customers.test = customer.overall.means[-customer.train, ]
 
-clusplot(std.customer, km.res$cluster, color=TRUE, shade=TRUE,
-   labels=2, lines=0)
+scalled.customer.train  = scalled.customer[customer.train, ]
+# Compute distance metrics on the standardized customer data
+distanceMatrix = dist(scalled.customer.train)
 
+# Perform hierarchical clustering on distance metrics
+hierarchical.cluster <- hclust(distanceMatrix, method="ward.D2")
+# Build dendrogram object from hierarchical.cluster results
+hierarchical.dendogram <- as.dendrogram(hierarchical.cluster)
+# Extract the data (for rectangular lines)
+hierarchical.dendogram <- dendro_data(hierarchical.dendogram, type = "rectangle")
+
+names(hierarchical.dendogram)
+head(hierarchical.dendogram$segments)
+head(hierarchical.dendogram$labels)
+
+# Plot the dendogram
+p <- ggplot(hierarchical.dendogram$segments) + 
+  geom_segment(aes(x = x, y = y, xend = xend, yend = yend))+
+  geom_text(data = hierarchical.dendogram$labels, aes(x, y, label = label),
+            hjust = 1, angle = 90, size = 3)+
+  ylim(-3, 15)+ ggtitle("Dendogram for Customer Segmentation")
+print(p)
 ```
+```{r}
+#The dendogram is too crowded and so we first make 5 segments and view the 
+#data
+members = cutree(hierarchical.cluster, k = 5)
+aggregate(cancelled.customers.train, by = list(members), mean)
+```
+ - We can try to understand the profile of each segment.
+ - Customer falling under segment/group 2 are likely to leave the subscription immediatley (in a month or two). The number of pages visited on average is the least and their life span is pretty large. These are customers who most likely got bored or found other resources. The latter ratio of last month to prev seems to have increased by almost 100% when comapred to the last to first month ratio. 
+ - Similarly, we see how customers belonging to the segment/group 4 have an average status towards 2 i.e cancelled. Their last month to first month login ratio as well as the prev to last month ratio is the highest. We can say that customers that come under this segment are likely to unscribe from the e-card greeting subscription. 
 
-- Second Method: predict the specific lifespan of each custoemr
+- Let us try increasing the segments to see if more distinct status based segments can be obtained 
+```{r}
+# Increasing the segments to 8
+members = cutree(hierarchical.cluster, k = 8)
+aggregate(cancelled.customers.train, by = list(members), mean)
+```
+- With 8 segments we can see clearer segments forming with distinct behaviour.
+ - In general we notice that as the lifespan increases customers tend to stop/cancel the subscription. This is alarming to the company as it is clear that more effort must be maintained in retaining current subscribers. A clear indication that customers would leave based on increasing lifespan is the difference between the two ratios. Larger the lastToPrevLogin ratio compared to the lastToFirst the more likely that the customer would stop the subscription. We see that group 4, has a big lifespan and their ratio difference is almost 200%. 
+ - However, we notice that customers are more likely to stay on, even if their lifespan on average is large, if their browsing ratios are maintained within a 50% to 80% range.
+
+
+# Second Method: predict the specific lifespan of each customer
 
 ```{r}
 # splitting prediction training and testing dataset
