@@ -207,6 +207,8 @@ We will try to determine if we can segment the customers into buckets and determ
 if any behaviour related to their average online time, completed orders can be used to 
 predict whether a customer will cancel their subscription in the near future
 
+- First pass analysis of the predictors that would be used via Hierarchical Clustering
+
 ```{r}
 
 #Heirarchical Clustering
@@ -254,15 +256,38 @@ aggregate(cancelled.customers.train, by = list(members), mean)
  - Customer falling under segment/group 2 are likely to leave the subscription immediatley (in a month or two). The number of pages visited on average is the least and their life span is pretty large. These are customers who most likely got bored or found other resources. The latter ratio of last month to prev seems to have increased by almost 100% when comapred to the last to first month ratio. 
  - Similarly, we see how customers belonging to the segment/group 4 have an average status towards 2 i.e cancelled. Their last month to first month login ratio as well as the prev to last month ratio is the highest. We can say that customers that come under this segment are likely to unscribe from the e-card greeting subscription. 
 
-- Let us try increasing the segments to see if more distinct status based segments can be obtained 
+- Let us try decreasing the segments to 2 to see if more distinct status based segments can be obtained 
 ```{r}
-# Increasing the segments to 8
-members = cutree(hierarchical.cluster, k = 8)
+# Increasing the segments to 2
+members = cutree(hierarchical.cluster, k = 2)
 aggregate(cancelled.customers.train, by = list(members), mean)
 ```
-- With 8 segments we can see clearer segments forming with distinct behaviour.
- - In general we notice that as the lifespan increases customers tend to stop/cancel the subscription. This is alarming to the company as it is clear that more effort must be maintained in retaining current subscribers. A clear indication that customers would leave based on increasing lifespan is the difference between the two ratios. Larger the lastToPrevLogin ratio compared to the lastToFirst the more likely that the customer would stop the subscription. We see that group 4, has a big lifespan and their ratio difference is almost 200%. 
+- With 2 segments we can see clearer segments forming with distinct behaviour.
+ - In general we notice that as the lifespan increases customers tend to stop/cancel the subscription. This is alarming to the company as it is clear that more effort must be maintained in retaining current subscribers. A clear indication that customers would leave based on increasing lifespan is the difference between the two ratios. Larger the lastToPrevLogin ratio compared to the lastToFirst the more likely that the customer would stop the subscription. 
  - However, we notice that customers are more likely to stay on, even if their lifespan on average is large, if their browsing ratios are maintained within a 50% to 80% range.
+
+#Predicting via SVM
+```{r}
+
+cancelled.svm <-svm(as.factor(cancelled.customers.train$lastStatus) ~ . , data = cancelled.customers.train)
+cancelled.svm
+
+cancelled.svm.pred <- predict(cancelled.svm, cancelled.customers.test)
+
+
+conf.mat.cancelled.svm<-table(cancelled.svm.pred, cancelled.customers.test$lastStatus)
+conf.mat.cancelled.svm
+
+cancelled.svm.accuracy<- sum(diag(conf.mat.cancelled.svm)) / sum(conf.mat.cancelled.svm)
+cancelled.svm.accuracy
+
+#Parameter tuning 
+
+
+
+
+```
+```
 
 
 # Second Method: predict the specific lifespan of each customer
