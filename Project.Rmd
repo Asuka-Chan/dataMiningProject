@@ -50,11 +50,12 @@ library(nnet)
 library(e1071)
 library(ranger)
 library(glmnet)
+library(cluster)
 ```
 
 ```{r, cache = TRUE}
 # Importing teh data directly from Excel
-customer.data <- read_excel("C:/Users/Maggie/Downloads/ltv Dataset.xlsx")
+customer.data <- read_excel("C://Users//nelli//Downloads//ltv Dataset.xlsx", sheet = "Sheet1")
 ```
 
 ```{r, cache = TRUE}
@@ -84,8 +85,20 @@ customer.data$year <- format(customer.data$date,format = '%Y')
 #calculate the average value
 ltv.pages <- aggregate( pages ~ id+ month + year, customer.data, mean)
 ltv.onsite <- aggregate( onsite ~ id + month + year, customer.data, mean)
+
 #merger the table
 ltv.m1 <- merge(x = ltv.pages, y = ltv.onsite, by = c('id','month','year'), all.x = TRUE)
+
+#find the overall login counts per month
+ltv.logins <- aggregate(cbind(count = date) ~ id + month + year, 
+          customer.data, 
+          FUN = function(x){NROW(x)})
+#order this by the id, year and month
+ltv.logins <- ltv.logins[
+  with(ltv.logins, order(id, year, match(ltv.logins$month, month.name))),]  %>% group_by(id)
+
+
+
 ```
 
 ```{r}
@@ -111,9 +124,43 @@ customer.lifespan$subDays <- as.integer(difftime(customer.lifespan$maxDate, cust
 lifespanFraction <- 1/(with(1, sum(customer.data$status == 2))/10000)
 #calculate the lifespan for the customers
 customer.lifespan$lifespan <- customer.lifespan$subDays
+
+#find the max and min Months and years
+customer.lifespan$maxMonth <- months(customer.lifespan$maxDate)
+customer.lifespan$minYear <- format(customer.lifespan$maxDate,format = '%Y')
+customer.lifespan$minMonth <- months(customer.lifespan$minDate)
+customer.lifespan$minYear <- format(customer.lifespan$minDate,format = '%Y')
+
+
 #customer.lifespan$lifespan <- ifelse(customer.lifespan$status == 2, customer.lifespan$subDays, customer.lifespan$subDays + lifespanFraction)
 #add this data to the main dataset 
 customer.data$lifespan <- customer.lifespan$lifespan[match(customer.data$id,customer.lifespan$id)]
+
+
+customer.overall.means <- aggregate(customer.data[, c("pages", "onsite", "completed")], list(customer.data$id), mean)
+customer.overall.means <- customer.overall.means %>% rename(id = Group.1)
+#determine the logins in the first month, last and the last but one 
+customer.firstMonth.logins <- ltv.logins  %>%  filter(row_number()==1) %>% select("id", "count")
+customer.previousMonth.logins <- ltv.logins  %>%  filter(row_number()==n()-1) %>% select("id",  "count")
+customer.lastMonth.logins <- ltv.logins  %>%  filter(row_number()==n()) %>% select("id", "count")
+
+#determine the login ratios of lastMonth to first and the last month to the last but on
+len = length(customer.overall.means$id)
+
+for (i in seq(length(customer.overall.means$id))) {
+  curId <- customer.overall.means$id[i]
+  lastMonthLogins <- customer.lastMonth.logins[which(customer.lastMonth.logins$id==curId),2]
+  firstMonthLogins <- customer.firstMonth.logins[which(customer.firstMonth.logins$id==curId),2]
+  prevMonthLogins <- customer.previousMonth.logins[which(customer.previousMonth.logins$id==curId),2]
+  if (is.na(prevMonthLogins$count[1])){
+    #print(curId)
+    prevMonthLogins <- lastMonthLogins
+  }
+  customer.overall.means$lastToFirstLoginRatio[i] <- lastMonthLogins/firstMonthLogins
+  customer.overall.means$lastToPrevLoginRatio[i] <- lastMonthLogins/prevMonthLogins
+}
+
+
 ```
 
 ```{r, cache = TRUE}
@@ -148,9 +195,26 @@ aggregatedCustomerSums <- rename(aggregatedCustomerSums, id = Customerid, pages 
 
 ## 1.	Develop an attrition model, to predict whether a customer will cancel their subscription in the near future. Characterize your model performance.
 
-- First Method: predict lifespan of different segments custoemr
+- First Method: predict lifespan of different segments customer
 
 ```{r}
+#testing not correct
+
+std.customer <- na.omit(customer.overall.means) # listwise deletion of missing
+std.customer <- scale(std.customer) # standardize variables
+
+wss <- (nrow(std.customer)-1)*sum(apply(std.customer,2,var))
+for (i in 2:15) wss[i] <- sum(kmeans(std.customer,
+   centers=i)$withinss)
+plot(1:15, wss, type="b", xlab="Number of Clusters",
+  ylab="Within groups sum of squares")
+
+km.res <- kmeans(std.customer, 4, nstart = 25)
+str(km.res)
+
+clusplot(std.customer, km.res$cluster, color=TRUE, shade=TRUE,
+   labels=2, lines=0)
+
 ```
 
 - Second Method: predict the specific lifespan of each custoemr
@@ -250,9 +314,10 @@ customer.data$userType <- user.type
 
 
 ```{r}
-#select the data we need
-#customer.data.segOne <- customer.data %>% group_by(id) %>% filter(date == max(date)) 
-customer.data.segOne <- subset(customer.data,select = c('pages','onsite', 'userType'))#, 'entered', 'completed'))
+#select the data we need, we do not want to overfit the model, and hence will only include data only the 
+# maxDate related data for the each user.
+customer.data.segOne <- customer.data %>% group_by(id) %>% filter(date == max(date)) 
+customer.data.segOne <- subset(customer.data.segOne,select = c('pages','onsite', 'userType'))#, 'entered', 'completed'))
 #split into training and test dataset
 customer.data.segOne <- transform(
   customer.data.segOne,
@@ -263,6 +328,7 @@ customer.data.segOne <- transform(
 dt = sort(sample(nrow(customer.data.segOne), nrow(customer.data.segOne)*.7))
 train.segOne<-customer.data.segOne[dt,]
 test.segOne<-customer.data.segOne[-dt,]
+
 ```
 
 #random forest
