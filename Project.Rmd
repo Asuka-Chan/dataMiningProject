@@ -352,7 +352,6 @@ customer.classify<-transform(
   customer.classify,
   status = as.factor(status)
 )
-
 ```
 
 ```{r}
