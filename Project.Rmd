@@ -313,45 +313,124 @@ cancelled.svm.accuracy
 
 # Second Method: predict the specific lifespan of each customer
 
+# Second Method: classification
 ```{r}
-# splitting prediction training and testing dataset
-customer.canceled.train <- aggregatedCustomerSums[aggregatedCustomerSums$status == "2",]
-customer.continuing.test <- aggregatedCustomerSums[aggregatedCustomerSums$status != "2",]
+customer.classify <- customer.data[, c("id", "date", "status", "pages", "onsite", "entered", "completed", "holiday", "gender")] %>% group_by(id)
+customer.classify <-customer.classify %>% mutate(avgOnsite = mean(onsite))
+customer.classify <-customer.classify %>% mutate(medOnsite = median(onsite))
+customer.classify <-customer.classify %>% mutate(sdOnsite = sd(onsite))
+customer.classify <-customer.classify %>% mutate(skewOnsite = skewness(onsite))
+customer.classify <-customer.classify %>% mutate(avgPages = mean(pages))
+customer.classify <-customer.classify %>% mutate(medPages = median(pages))
+customer.classify <-customer.classify %>% mutate(sdPages = sd(pages))
+customer.classify <-customer.classify %>% mutate(skewPages = skewness(pages))
+customer.classify <-customer.classify %>% mutate(avgEntered = mean(entered))
+customer.classify <-customer.classify %>% mutate(avgCompleted = mean(completed))
+customer.classify <-customer.classify %>% mutate(avgHoliday = mean(holiday))
+customer.classify<-customer.classify %>% mutate(enterPerPage = mean(entered/pages, na.rm = TRUE))
+customer.classify<-customer.classify %>% mutate(completePerEnter = sum(completed)/sum(entered))
+customer.classify<-customer.classify %>% mutate(onsitePerEnter = sum(onsite)/sum(entered))
+customer.classify<-customer.classify %>% mutate(onsitePerPage = mean(onsite/pages, na.rm = TRUE))
+customer.classify<-customer.classify %>% mutate(pagesPerHoliday = mean(holiday/pages, na.rm = TRUE))
+customer.classify<-customer.classify %>% mutate(onsitePerHoliday = mean(holiday/onsite, na.rm = TRUE))
+customer.classify <-customer.classify %>% mutate(LastMonthOnsiteTime = tail(onsite, n=2)[1])
+customer.classify <-customer.classify %>% mutate(LastMonthPagesViewed = tail(pages, n=2)[1])
 
-# process prediction variables
-drops <- c("id","status","decisiveratio")
-customer.canceled.train <- customer.canceled.train[ , !(names(customer.canceled.train) %in% drops)]
-customer.continuing.test <- customer.continuing.test[ , !(names(customer.continuing.test) %in% drops)]
+customer.classify <- customer.classify %>% distinct(id, .keep_all = TRUE)
+customer.classify <- transform(
+  customer.classify,
+  status = aggregatedCustomerSums$status,
+  pages = aggregatedCustomerSums$pages,
+  onsite = aggregatedCustomerSums$onsite,
+  entered = aggregatedCustomerSums$entered,
+  completed = aggregatedCustomerSums$completed,
+  holiday = aggregatedCustomerSums$holiday
+)
+
+customer.classify<-transform(
+  customer.classify,
+  status = as.factor(status)
+)
+
 ```
 
 ```{r}
-# linear lasso model
-
-customer.met2.lasso.x <- model.matrix(lifespan~., customer.canceled.train)[,-1]
-customer.met2.lasso.test <- model.matrix(lifespan~., customer.continuing.test)[,-1]
-# 37 features
-# dim(ltv.x) 
-customer.met2.lasso.y <- customer.canceled.train$lifespan
-
-customer.met2.lasso.reg <- glmnet(customer.met2.lasso.x, customer.met2.lasso.y, alpha = 1)
-summary(customer.met2.lasso.reg)
-
-lambdas <- 10^seq(2, -3, by = -.1)
-
-# Setting alpha = 1 implements lasso regression
-customer.met2.lasso.cvreg <- cv.glmnet(customer.met2.lasso.x, customer.met2.lasso.y, alpha = 1, lambda = lambdas, standardize = TRUE, nfolds = 5)
-
-# Best 
-lambda_best <- customer.met2.lasso.cvreg$lambda.min 
-lambda_best
-
-predict(customer.met2.lasso.cvreg, newx=customer.met2.lasso.test, s = lambda_best, type="response")
+#customer.classify.drop <- c("id","date","pages","onsite","entered","completed","holiday")
+customer.classify.drop <- c("id","date")
+customer.classify <- customer.classify[,!(names(customer.classify) %in% customer.classify.drop)]
 ```
 
 ```{r}
-# linear model
-
+# Classification method for task 1
+# Define training set
+set.seed(42)
+classify.train<-sample(1:nrow(customer.classify), nrow(customer.classify)*2/3)
+customer.classify.train <- customer.classify[classify.train,]
+customer.classify.test <- customer.classify[-classify.train,]
 ```
+
+```{r,cache = true}
+# Logistic Regression
+customer.classify.logit <- glm(as.factor(status)~., data = customer.classify.train, family=binomial)
+customer.classify.logit.probs <- predict(customer.classify.logit, customer.classify.test, type="response")
+summary(customer.classify.logit)
+
+customer.classify.logit.pred = rep("1",nrow(customer.classify.test))
+customer.classify.logit.pred[customer.classify.logit.probs>0.5] = "2"
+
+customer.classify.logit.table <- table(customer.classify.logit.pred, customer.classify.test$status)
+customer.classify.logit.table
+
+# calculate the accuracy of our Logistic Regression model
+customer.classify.logit.misclass <- mean(customer.classify.logit.pred != customer.classify.test$status)
+customer.classify.logit.accuracy <- 1 - customer.classify.logit.misclass
+customer.classify.logit.accuracy
+```
+
+```{r,cache = true}
+# Random Forest
+# build the random forest model for classification
+customer.classify.rf <- randomForest(status~., data=customer.classify.train, ntree=500, proximity=T,na.action = na.roughfix)
+customer.classify.rf
+customer.classify.rf.predict <- predict(customer.classify.rf, customer.classify.test)
+customer.classify.rf.table <- table(customer.classify.rf.predict, customer.classify.test$status)
+customer.classify.rf.table
+
+# calculate the accuracy of our random forest model
+customer.classify.rf.misclass = mean(customer.classify.rf.predict != customer.classify.test$status)
+customer.classify.rf.accuracy <- 1- customer.classify.rf.misclass
+customer.classify.rf.accuracy
+```
+
+```{r}
+# Naive Bayes
+customer.classify.nb <-naiveBayes(status ~., data = customer.classify.train, laplace=1)
+summary(customer.classify.nb)
+customer.classify.nb.pred <- predict(customer.classify.nb, customer.classify.test)
+
+customer.classify.nb.table<-table(customer.classify.nb.pred, customer.classify.test$status)
+customer.classify.nb.table
+
+# calculate the accuracy of our Naive Bayes model
+customer.classify.nb.misclass = mean(customer.classify.nb.pred != customer.classify.test$status)
+customer.classify.nb.accuracy <- 1- customer.classify.nb.misclass
+customer.classify.nb.accuracy
+```
+
+```{r}
+#SVM
+customer.classify.svm <-svm(status~ . , data = customer.classify.train, type = 'C-classification', kernel = 'radial')
+customer.classify.svm.pred <- predict(customer.classify.svm, customer.classify.test)
+
+customer.classify.svm.table<-table(customer.classify.svm.pred, customer.classify.test$status)
+customer.classify.svm.table
+
+# calculate the accuracy of our svm model
+customer.classify.svm.misclass = mean(customer.classify.svm.pred != customer.classify.test$status)
+customer.classify.svm.accuracy <- 1- customer.classify.svm.misclass
+customer.classify.svm.accuracy
+```
+
 
 ## 2.	Develop a model for estimating the ltv of a customer. Characterize your model performance.
 
