@@ -314,6 +314,7 @@ cancelled.svm.accuracy
 # Second Method: predict the specific lifespan of each customer
 
 # Second Method: classification
+
 ```{r}
 customer.classify <- customer.data[, c("id", "date", "status", "pages", "onsite", "entered", "completed", "holiday", "gender")] %>% group_by(id)
 customer.classify <-customer.classify %>% mutate(avgOnsite = mean(onsite))
