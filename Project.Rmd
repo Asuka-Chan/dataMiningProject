@@ -56,7 +56,7 @@ library(ggdendro)
 ```
 
 ```{r, cache = TRUE}
-# Importing teh data directly from Excel
+# Importing the data directly from Excel
 customer.data <- read_excel("C://Users//nelli//Downloads//ltv Dataset.xlsx", sheet = "Sheet1")
 ```
 
@@ -98,8 +98,6 @@ ltv.logins <- aggregate(cbind(count = date) ~ id + month + year,
 #order this by the id, year and month
 ltv.logins <- ltv.logins[
   with(ltv.logins, order(id, year, match(ltv.logins$month, month.name))),]  %>% group_by(id)
-
-
 
 ```
 
@@ -166,8 +164,27 @@ for (i in seq(length(customer.overall.means$id))) {
   customer.overall.means$lastToPrevLoginRatio[i] <- as.numeric(lastMonthLogins/prevMonthLogins)
 }
 
+```
+
+Before using the predictors from the `customer.overall.means` table we must ensure that there is minimum co-relation between the terms. 
+
+```{r}
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
+{
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(0, 1, 0, 1))
+    r <- abs(cor(x, y))
+    txt <- format(c(r, 0.123456789), digits = digits)[1]
+    txt <- paste0(prefix, txt)
+    if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+    text(0.5, 0.5, txt, cex = pmax(1, cex.cor * r))
+}
+
+# Use panel.cor to display correlations in lower panel.
+pairs(customer.overall.means[,c(-1)], lower.panel = panel.cor) 
 
 ```
+- From the above plots, we see that most of the predictors have very low correlation among themselves. While `pages` and `completed` have a .76 correlation between them, we still consider both of them as part of the model as the value is not too high to imply complete correlation. Hence removing either could cause the model to miss out on certain insights.
 
 ```{r, cache = TRUE}
 # Add 2 columns in the dataframe representing completed/holiday and onsite/entered
@@ -207,7 +224,14 @@ We will try to determine if we can segment the customers into buckets and determ
 if any behaviour related to their average online time, completed orders can be used to 
 predict whether a customer will cancel their subscription in the near future
 
-- First pass analysis of the predictors that would be used via Hierarchical Clustering
+- First pass analysis of the predictors that would be used via Clustering and then assosiate the
+users into the appropriate segments:
+`Active`  - Customers who are actively using the website and likely to keep subscribing
+`Napping` - Customers who are mostly active but have a few days of almost 0 activity. They are unlikely to cancel their subscription in the near future
+`Sleepin` - Customers who are not very active and are more likely to leave the subscription in the coming months
+`Cancelled` - Customers who have cancelled and will cancel for sure.
+ 
+
 ```{r}
 std.customer <- na.omit(customer.overall.means) # listwise deletion of missing
 std.customer <- scale(std.customer) # standardize variables
@@ -221,35 +245,36 @@ str(km.res)
 clusplot(std.customer, km.res$cluster, color=TRUE, shade=TRUE,
    labels=2, lines=0)
 ```
+ - K-Means seems too crowded and not very interpretatble. Let us try Heirarchical Clustering
 
 ```{r}
 
 set.seed(30)
 #Heirarchical Clustering
-# we create a 70% data partition from the subset of customers who cancelled
-cancelled.customers = createDataPartition(customer.overall.means$id[which(customer.overall.means$lastStatus == 2)],l=F, p = 0.5)
-# we create a 30% data partition from the subset of customers who are active
-active.customers = createDataPartition(customer.overall.means$id[which(customer.overall.means$lastStatus == 1)],l=F, p = 0.5)
+# we create a 100% data partition from the subset of customers who cancelled
+cancelled.customers = createDataPartition(customer.overall.means$id[which(customer.overall.means$lastStatus == 2)],l=F, p = 1)
+# we create a 100% data partition from the subset of customers who are active
+active.customers = createDataPartition(customer.overall.means$id[which(customer.overall.means$lastStatus == 1)],l=F, p = 1)
 
 customer.train <- rbind(active.customers, cancelled.customers)
 
 scalled.customer = scale(customer.overall.means[,-1])
 cancelled.customers.train = customer.overall.means[customer.train,-1 ]
-cancelled.customers.test = customer.overall.means[-customer.train, -1]
+#cancelled.customers.test = customer.overall.means[-customer.train, -1]
 
 scalled.customer.train  = scalled.customer[customer.train, ]
 # Compute distance metrics on the standardized customer data
 distanceMatrix = dist(scalled.customer.train)
 
 # Perform hierarchical clustering on distance metrics
-hierarchical.cluster <- hclust(distanceMatrix, method="ward.D2")
+hierarchical.cluster <- hclust(distanceMatrix, method = 'ward.D2')
 # Build dendrogram object from hierarchical.cluster results
 hierarchical.dendogram <- as.dendrogram(hierarchical.cluster)
 # Extract the data (for rectangular lines)
 hierarchical.dendogram <- dendro_data(hierarchical.dendogram, type = "rectangle")
 
 names(hierarchical.dendogram)
-head(hierarchical.dendogram$segments)
+#head(hierarchical.dendogram$segments)
 head(hierarchical.dendogram$labels)
 
 # Plot the dendogram
@@ -260,24 +285,33 @@ p <- ggplot(hierarchical.dendogram$segments) +
   ylim(-3, 15)+ ggtitle("Dendogram for Customer Segmentation")
 print(p)
 ```
+#The dendogram is too crowded and so we first try 5 segments and view the data
+
 ```{r}
-#The dendogram is too crowded and so we first make 5 segments and view the 
-#data
 members = cutree(hierarchical.cluster, k = 5)
 aggregate(cancelled.customers.train, by = list(members), mean)
 ```
  - We can try to understand the profile of each segment.
- - Customer falling under segment/group 5 are likely to leave the subscription (in a month or two). The number of pages visited on average is the least and their life span is large. These are customers who most likely got bored or found other resources. The latter ratio of last month to prev seems to have increased by almost 100% when comapred to the last to first month ratio. 
- - Similarly, we see how customers belonging to the segment/group 4 have an average status towards 2 i.e cancelled. Their last month to first month login ratio as well as the prev to last month ratio is the highest. We can say that customers that come under this segment are likely to unscribe from the e-card greeting subscription. 
+ - Customer falling under segment/group2 2 and 4 are likely to have left or leave the subscription (in a month or two). The number of pages visited on average is the least and their life span is large. These are customers who most likely got bored or found other resources. The latter ratio of last month to prev seems to have increased by almost 100% when comapred to the last to first month ratio. 
+ - Similarly, we see how customers belonging to the segment/group 1 have an average status towards 2. Their last month to first month login ratio as well as the prev to last month ratio is the highest. We can say that customers that come under this segment are likely to unscribe from the e-card greeting subscription. 
 
-- Let us try increasing the segments to 4 to see if more distinct status based segments can be obtained 
+- Let us try decreasing the segments to 4 to see if more distinct status based segments can be obtained 
 ```{r}
-# increasing the segments to 3
+# decreasing the segments to 4
 members = cutree(hierarchical.cluster, k = 4)
 segmented.customers <- as.data.frame(aggregate(cancelled.customers.train, by = list(members), mean))
 segmented.customers <- segmented.customers %>% rename(Type = Group.1)
-segmented.customers$Type <- c("Sleeping", "Cancelled", "Napping","Active" )
+segmented.customers$Type <- c("Sleeping", "Cancelled", "Active", "Napping" )
 segmented.customers
+```
+- We are able to see 4 disticnt groups and hence segregate the users into one of the categories - `Sleeping`, `Cancelled`, `Napping` and `Active`. We assign these categories to the respective users.
+
+```{r}
+cancelled.customers.train$segment <- members
+
+
+View(cancelled.customers.train)
+
 ```
 - With 4 segments we can see clearer segments forming with distinct behaviour.
  - In general we notice that as the lifespan increases customers tend to stop/cancel the subscription. This is alarming to the company as it is clear that more effort must be maintained in retaining current subscribers. A clear indication that customers would leave based on increasing lifespan is the difference between the two ratios. Larger the lastToPrevLogin ratio compared to the lastToFirst the more likely that the customer would stop the subscription. 
@@ -285,31 +319,68 @@ segmented.customers
 
 # Predicting via SVM
 ```{r, cache=TRUE}
-cancelled.svm <-svm(as.factor(cancelled.customers.train$lastStatus) ~ . , data = cancelled.customers.train)
-#cancelled.svm
 
-cancelled.svm.pred <- predict(cancelled.svm, cancelled.customers.test)
-conf.mat.cancelled.svm<-table(cancelled.svm.pred, cancelled.customers.test$lastStatus)
-conf.mat.cancelled.svm
+set.seed(1)
+# we create a 70:30 data partition from the subset of customers
+train.segments = sample(1:nrow(cancelled.customers.train), nrow(cancelled.customers.train)*2/3)
 
-cancelled.svm.accuracy<- sum(diag(conf.mat.cancelled.svm)) / sum(conf.mat.cancelled.svm)
-cancelled.svm.accuracy
+customer.segements.train <- cancelled.customers.train[train.segments, -4]
+customer.segements.test <- cancelled.customers.train[-train.segments, -4]
 
-#Parameter tuning 
-#cancelled.svm.tuned <-tune.svm(cancelled.customers.train[,-4], as.factor(cancelled.customers.train$lastStatus), gamma=10^(-6:-3), cost=2^(2:9))
-#print(cancelled.svm.tuned)
+# Random Forest 
 
-#plot(cancelled.svm.tuned)
+customer.segements.rf <- randomForest(as.factor(customer.segements.train$segment) ~ . ,data=customer.segements.train, importance=TRUE, ntree=150)
+customer.segements.rf 
+#plotting the importance of the variables in the model
+varImpPlot(customer.segements.rf)
 
-#cancelled.svm.best <- cancelled.svm.tuned$best.model
-#cancelled.svm.best.pred <- predict(cancelled.svm.best, cancelled.customers.test) 
- 
-#best.model.error <- as.factor(cancelled.customers.train$lastStatus) - cancelled.svm.best.pred 
-#RMSE 
-#sqrt(mean(best.model.error^2)) 
+#creating a model to predict the segments that would move into cancellled 
+customer.segements.rf.predict <- predict(customer.segements.rf, customer.segements.test)
+customer.segements.rf.table <- table(customer.segements.rf.predict, customer.segements.test$segment)
+customer.segements.rf.table
+
+# Determine accuracy of the model
+customer.segements.rf.misclass = mean(customer.segements.rf.predict != customer.segements.test$segment)
+1- customer.segements.rf.misclass
+
 ```
-```
+#SVM performance for the above
 
+```{r}
+#Creating the model
+customer.segements.svm <-svm(as.factor(customer.segements.train$segment) ~ . , data = customer.segements.train)
+customer.segements.svm
+#We now develop the predict model given the svm model
+customer.segements.svm.pred <- predict(customer.segements.svm, customer.segements.test)
+#Confusion matric for the same
+conf.mat.segments.svm<-table(customer.segements.svm.pred, customer.segements.test$segment)
+conf.mat.segments.svm
+#Determine the accuracy
+conf.mat.segments.svm.accuracy<- sum(diag(conf.mat.segments.svm)) / sum(conf.mat.segments.svm)
+conf.mat.segments.svm.accuracy
+```
+- The accuracy is only 73.99 %. Let us try tuning the model for better prediction rates
+
+```{r, cache=TRUE, eval=FALSE}
+#Parameter tuning - takes 30 minutes almost 
+customer.seg.svm.tuned <-tune.svm(customer.segements.train, as.factor(customer.segements.train$segment), gamma=c(0.1, 1, 10), cost=10^(-1:2))
+print(customer.seg.svm.tuned)
+```
+```{r, eval=FALSE}
+#View how the performance changes-  Darker regions indicate better accuracy.
+plot(customer.seg.svm.tuned)
+
+#Determine the prediction using the best model
+customer.seg.svm.best <- customer.seg.svm.tuned$best.model
+customer.seg.svm.best.pred <- predict(customer.seg.svm.best, customer.segements.test) 
+#print the confusion matrix
+conf.mat.svm.best<-table(customer.seg.svm.best.pred, customer.segements.test$segment)
+conf.mat.svm.best
+#Determine the accuracy
+conf.mat.svm.best.accuracy<- sum(diag(conf.mat.svm.best)) / sum(conf.mat.svm.best)
+conf.mat.svm.best.accuracy
+
+```
 
 # Second Method: predict the specific lifespan of each customer
 
@@ -506,15 +577,20 @@ test.segOne<-customer.data.segOne[-dt,]
 
 #random forest
 ```{r}
-set.seed(42)
-customer.segOne.rf <- ranger(
+set.seed(1)
+customer.segOne.rf <- randomForest(
   as.factor(userType) ~ ., 
   data = train.segOne, 
-  importance = "impurity",
-  num.trees = 2000
+  importance = TRUE,
+  num.trees = 500
 )
+
+customer.segOne.rf
+
+varImpPlot(customer.segOne.rf)
+
 customer.segOne.pred <- predict(customer.segOne.rf, test.segOne)
-customer.segOne.rfResult<- table(test.segOne$userType, predictions(customer.segOne.pred))
+customer.segOne.rfResult<- table(test.segOne$userType, customer.segOne.pred)
 customer.segOne.rfResult
 accuracy<- sum(diag(customer.segOne.rfResult)) / sum(customer.segOne.rfResult)
 accuracy
@@ -551,22 +627,7 @@ prop.table(customer.segOne.nb.conf)
 customer.segOne.nb.accuracy<- sum(diag(customer.segOne.nb.conf)) / sum(customer.segOne.nb.conf)
 customer.segOne.nb.accuracy
 ```
-
-=======
-
-#test the model classification on the test data
-customer.segOne.nb.pred <- predict(customer.segOne.nb, newdata=test.segOne)
-
-#create a confusion matrix
-customer.segOne.nb.conf <-table(customer.segOne.nb.pred, test.segOne$userType)
-prop.table(customer.segOne.nb.conf)
-
-#determine the accuracy of the model
-customer.segOne.nb.accuracy<- sum(diag(customer.segOne.nb.conf)) / sum(customer.segOne.nb.conf)
-customer.segOne.nb.accuracy
-
->>>>>>> 0dd6f9099c5315c95a1fd5e0a66e27ff9e8f8614
-- Segmentation 2: Decisive customers, Tentative customers, Hesitant customers
+# Segmentation 2: Decisive customers, Tentative customers, Hesitant customers
 - Variables: Gender, onsite, pages, entered, completed
 - Classification label: completed / entered 
   - 2: if the `decisiveratio` of that customer is greater or equal to `r summary(aggregatedCustomerSums$decisiveratio)[5]` then we classfy the customer as decisive
