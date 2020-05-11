@@ -208,20 +208,34 @@ if any behaviour related to their average online time, completed orders can be u
 predict whether a customer will cancel their subscription in the near future
 
 - First pass analysis of the predictors that would be used via Hierarchical Clustering
+```{r}
+std.customer <- na.omit(customer.overall.means) # listwise deletion of missing
+std.customer <- scale(std.customer) # standardize variables
+wss <- (nrow(std.customer)-1)*sum(apply(std.customer,2,var))
+for (i in 2:15) wss[i] <- sum(kmeans(std.customer,
+   centers=i)$withinss)
+plot(1:15, wss, type="b", xlab="Number of Clusters",
+  ylab="Within groups sum of squares")
+km.res <- kmeans(std.customer, 4, nstart = 25)
+str(km.res)
+clusplot(std.customer, km.res$cluster, color=TRUE, shade=TRUE,
+   labels=2, lines=0)
+```
 
 ```{r}
 
+set.seed(30)
 #Heirarchical Clustering
 # we create a 70% data partition from the subset of customers who cancelled
-cancelled.customers = createDataPartition(customer.overall.means$id[which(customer.overall.means$lastStatus == 2)],l=F, p = 0.7)
+cancelled.customers = createDataPartition(customer.overall.means$id[which(customer.overall.means$lastStatus == 2)],l=F, p = 0.5)
 # we create a 30% data partition from the subset of customers who are active
-active.customers = createDataPartition(customer.overall.means$id[which(customer.overall.means$lastStatus == 1)],l=F, p = 0.3)
+active.customers = createDataPartition(customer.overall.means$id[which(customer.overall.means$lastStatus == 1)],l=F, p = 0.5)
 
 customer.train <- rbind(active.customers, cancelled.customers)
 
-scalled.customer = scale(customer.overall.means)
-cancelled.customers.train = customer.overall.means[customer.train, ]
-cancelled.customers.test = customer.overall.means[-customer.train, ]
+scalled.customer = scale(customer.overall.means[,-1])
+cancelled.customers.train = customer.overall.means[customer.train,-1 ]
+cancelled.customers.test = customer.overall.means[-customer.train, -1]
 
 scalled.customer.train  = scalled.customer[customer.train, ]
 # Compute distance metrics on the standardized customer data
@@ -253,28 +267,28 @@ members = cutree(hierarchical.cluster, k = 5)
 aggregate(cancelled.customers.train, by = list(members), mean)
 ```
  - We can try to understand the profile of each segment.
- - Customer falling under segment/group 2 are likely to leave the subscription immediatley (in a month or two). The number of pages visited on average is the least and their life span is pretty large. These are customers who most likely got bored or found other resources. The latter ratio of last month to prev seems to have increased by almost 100% when comapred to the last to first month ratio. 
+ - Customer falling under segment/group 5 are likely to leave the subscription (in a month or two). The number of pages visited on average is the least and their life span is large. These are customers who most likely got bored or found other resources. The latter ratio of last month to prev seems to have increased by almost 100% when comapred to the last to first month ratio. 
  - Similarly, we see how customers belonging to the segment/group 4 have an average status towards 2 i.e cancelled. Their last month to first month login ratio as well as the prev to last month ratio is the highest. We can say that customers that come under this segment are likely to unscribe from the e-card greeting subscription. 
 
-- Let us try decreasing the segments to 2 to see if more distinct status based segments can be obtained 
+- Let us try increasing the segments to 4 to see if more distinct status based segments can be obtained 
 ```{r}
-# Increasing the segments to 2
-members = cutree(hierarchical.cluster, k = 2)
-aggregate(cancelled.customers.train, by = list(members), mean)
+# increasing the segments to 3
+members = cutree(hierarchical.cluster, k = 4)
+segmented.customers <- as.data.frame(aggregate(cancelled.customers.train, by = list(members), mean))
+segmented.customers <- segmented.customers %>% rename(Type = Group.1)
+segmented.customers$Type <- c("Sleeping", "Cancelled", "Napping","Active" )
+segmented.customers
 ```
-- With 2 segments we can see clearer segments forming with distinct behaviour.
+- With 4 segments we can see clearer segments forming with distinct behaviour.
  - In general we notice that as the lifespan increases customers tend to stop/cancel the subscription. This is alarming to the company as it is clear that more effort must be maintained in retaining current subscribers. A clear indication that customers would leave based on increasing lifespan is the difference between the two ratios. Larger the lastToPrevLogin ratio compared to the lastToFirst the more likely that the customer would stop the subscription. 
  - However, we notice that customers are more likely to stay on, even if their lifespan on average is large, if their browsing ratios are maintained within a 50% to 80% range.
 
-#Predicting via SVM
-```{r}
-
+# Predicting via SVM
+```{r, cache=TRUE}
 cancelled.svm <-svm(as.factor(cancelled.customers.train$lastStatus) ~ . , data = cancelled.customers.train)
-cancelled.svm
+#cancelled.svm
 
 cancelled.svm.pred <- predict(cancelled.svm, cancelled.customers.test)
-
-
 conf.mat.cancelled.svm<-table(cancelled.svm.pred, cancelled.customers.test$lastStatus)
 conf.mat.cancelled.svm
 
@@ -282,10 +296,17 @@ cancelled.svm.accuracy<- sum(diag(conf.mat.cancelled.svm)) / sum(conf.mat.cancel
 cancelled.svm.accuracy
 
 #Parameter tuning 
+#cancelled.svm.tuned <-tune.svm(cancelled.customers.train[,-4], as.factor(cancelled.customers.train$lastStatus), gamma=10^(-6:-3), cost=2^(2:9))
+#print(cancelled.svm.tuned)
 
+#plot(cancelled.svm.tuned)
 
-
-
+#cancelled.svm.best <- cancelled.svm.tuned$best.model
+#cancelled.svm.best.pred <- predict(cancelled.svm.best, cancelled.customers.test) 
+ 
+#best.model.error <- as.factor(cancelled.customers.train$lastStatus) - cancelled.svm.best.pred 
+#RMSE 
+#sqrt(mean(best.model.error^2)) 
 ```
 ```
 
