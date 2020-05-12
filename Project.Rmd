@@ -52,7 +52,7 @@ library(ranger)
 library(glmnet)
 library(cluster)
 library(ggdendro)
-
+library(knitr)
 ```
 
 ```{r, cache = TRUE}
@@ -74,6 +74,8 @@ customer.data <- transform(
   completed=as.integer(completed),
   holiday=as.integer(holiday)
 )
+#Summarizing the raw data set we are using
+kable(summary(customer.data), digits = c(3, 3, 3, 3), format = "pandoc")
 ```
 
 ```{r}
@@ -90,6 +92,19 @@ ltv.onsite <- aggregate( onsite ~ id + month + year, customer.data, mean)
 
 #merger the table
 ltv.m1 <- merge(x = ltv.pages, y = ltv.onsite, by = c('id','month','year'), all.x = TRUE)
+```
+
+```{r}
+#sort the dataframe and export it
+ltv.m1 <- ltv.m1[order(ltv.m1$id),]
+ltv.m1
+
+#Summary of the month based aggregated pre-processed data set
+kable(summary(ltv.m1), digits = c(3, 3, 3, 3), format = "pandoc")
+
+write.csv(ltv.m1,'ltv_modelOne.csv',row.names = FALSE)
+```
+```{r}
 
 #find the overall login counts per month
 ltv.logins <- aggregate(cbind(count = date) ~ id + month + year, 
@@ -99,13 +114,10 @@ ltv.logins <- aggregate(cbind(count = date) ~ id + month + year,
 ltv.logins <- ltv.logins[
   with(ltv.logins, order(id, year, match(ltv.logins$month, month.name))),]  %>% group_by(id)
 
-```
+#Summary of the login counts based on months per customer
+kable(summary(ltv.logins), digits = c(3, 3, 3, 3), format = "pandoc")
 
-```{r}
-#sort the dataframe and export it
-ltv.m1 <- ltv.m1[order(ltv.m1$id),]
-ltv.m1
-write.csv(ltv.m1,'ltv_modelOne.csv',row.names = FALSE)
+
 ```
 
 ```{r, cache=TRUE}
@@ -139,6 +151,13 @@ customer.lifespan$minYear <- format(customer.lifespan$minDate,format = '%Y')
 customer.data$lifespan <- customer.lifespan$lifespan[match(customer.data$id,customer.lifespan$id)]
 
 
+#Summary of the customer lifespan based pre-processed data set
+kable(summary(customer.lifespan), digits = c(3, 3, 3, 3), format = "pandoc")
+
+```
+
+```{r}
+#Determine the averages of pages, onsite and completed per customer over their lifespan
 customer.overall.means <- aggregate(customer.data[, c("pages", "onsite", "completed")], list(customer.data$id), mean)
 customer.overall.means <- customer.overall.means %>% rename(id = Group.1)
 customer.overall.means$lastStatus <- customer.lifespan$status
@@ -163,6 +182,11 @@ for (i in seq(length(customer.overall.means$id))) {
   customer.overall.means$lastToFirstLoginRatio[i] <- as.numeric(lastMonthLogins/firstMonthLogins)
   customer.overall.means$lastToPrevLoginRatio[i] <- as.numeric(lastMonthLogins/prevMonthLogins)
 }
+
+
+#Summary of the customer average site usage over their lifespan
+kable(summary(customer.overall.means), digits = c(3, 3, 3, 3), format = "pandoc")
+
 
 ```
 
@@ -193,6 +217,10 @@ ltv_afterProcess <- transform(
   CompletedVSHoliday=as.integer(entered)/as.integer(holiday),
   OnsiteVSEntered=as.integer(onsite)/as.integer(entered)
 )
+
+#Summary of the complete data after pre-processing
+kable(summary(ltv_afterProcess), digits = c(3, 3, 3, 3), format = "pandoc")
+
 ```
 
 ```{r, cache = TRUE}
@@ -202,7 +230,7 @@ SumEnteredVSCompleted
 ```
 
 ```{r, cache = TRUE}
-# create a new dataframe representing teh aggregated summation of each variable per customer
+# create a new dataframe representing the aggregated summation of each variable per customer
 aggregatedCustomerSums <- aggregate(cbind(PagesSum=ltv_afterProcess$pages, OnsiteSum=ltv_afterProcess$onsite, EnteredSum=ltv_afterProcess$entered, CompletedSum=ltv_afterProcess$completed, HolidaySum=ltv_afterProcess$holiday), by=list(Customerid=ltv_afterProcess$id), FUN=sum)
 aggregatedCustomerSums<-merge(x = aggregatedCustomerSums, y = customer.data, intersect(names(aggregatedCustomerSums), names(customer.data)), by.x = "Customerid", by.y = "id", all.x=TRUE)[,c(names(aggregatedCustomerSums), "gender")]%>% distinct(Customerid, .keep_all=TRUE)
 aggregatedCustomerSums <- transform(
@@ -213,6 +241,11 @@ aggregatedCustomerSums <- transform(
   decisiveratio = CompletedSum / EnteredSum
 )
 aggregatedCustomerSums <- rename(aggregatedCustomerSums, id = Customerid, pages = PagesSum, onsite = OnsiteSum, entered = EnteredSum, completed = CompletedSum, holiday = HolidaySum)
+
+#Summary of the aggregated summation of each customer 
+kable(summary(aggregatedCustomerSums), digits = c(3, 3, 3, 3), format = "pandoc")
+
+
 ```
 
 
@@ -305,19 +338,26 @@ segmented.customers$Type <- c("Sleeping", "Cancelled", "Active", "Napping" )
 segmented.customers
 ```
 - We are able to see 4 disticnt groups and hence segregate the users into one of the categories - `Sleeping`, `Cancelled`, `Napping` and `Active`. We assign these categories to the respective users.
+ - In general we notice that as the lifespan increases many customers tend to stop/cancel the subscription. This is alarming to the company as it is clear that more effort must be maintained in retaining current subscribers. A clear indication that customers would leave based on increasing lifespan is the difference between the two ratios. Larger the lastToPrevLogin ratio compared to the lastToFirst the more likely that the customer would stop the subscription. 
+ - However, we notice that customers are more likely to stay on, even if their lifespan on average is large, if their browsing ratios are maintained within a 50% to 80% range.
+
 
 ```{r}
+#Our train set contains all 10,000 users
 cancelled.customers.train$segment <- members
 
 
-View(cancelled.customers.train)
-
+#Summary of the customer segmentation data set 
+kable(summary(cancelled.customers.train), digits = c(3, 3, 3, 3), format = "pandoc")
 ```
-- With 4 segments we can see clearer segments forming with distinct behaviour.
- - In general we notice that as the lifespan increases customers tend to stop/cancel the subscription. This is alarming to the company as it is clear that more effort must be maintained in retaining current subscribers. A clear indication that customers would leave based on increasing lifespan is the difference between the two ratios. Larger the lastToPrevLogin ratio compared to the lastToFirst the more likely that the customer would stop the subscription. 
- - However, we notice that customers are more likely to stay on, even if their lifespan on average is large, if their browsing ratios are maintained within a 50% to 80% range.
+ 
+ - The below values refer to the segments:
+  - 1 : `Sleeping`
+  - 2 : `Cancelled`
+  - 3 : `Active`
+  - 4 : `Napping`  
 
-# Predicting via SVM
+# Predicting via Random Forest
 ```{r, cache=TRUE}
 
 set.seed(1)
@@ -423,6 +463,10 @@ customer.classify<-transform(
   customer.classify,
   status = as.factor(status)
 )
+
+#Summary of the customer classification pre-processed data set  
+kable(summary(customer.classify), digits = c(3, 3, 3, 3), format = "pandoc")
+
 ```
 
 ```{r}
@@ -514,8 +558,8 @@ customer.classify.svm.accuracy
 
 - Variables: Completed, pages, onsite, entered
 - Classification label: Regular/Sleeping/Inactive
-  - 3: if the customer has browsed the website >60 days of `12/31/2014` then classify the customer as sleeping.
-  - 2: if all the variables of related to that customer is 0 then we classfy the customer as a inactive.
+  - 3: if the customer has status as 2 or if they have not visited the website on the given date, then customer is inactive.
+  - 2: if the customer has browsed the website >60 days of `12/31/2014` then classify the customer as sleeping.
   - 1: if the customer has recently browsed the website has been active within 60 days of `12/31/2014` then classify the customer as active.
 
 - data preprocssing:
@@ -527,9 +571,6 @@ summary(aggregatedCustomerSums$holiday.ratio)
 aggregatedCustomerSums$holiday.user <- ifelse(aggregatedCustomerSums$holiday.ratio>0.4573,1,0)
 ```
 
-active = 1
-Sleeping = 2
-Inactive (canceled) = 3
 ```{r}
 width = length(customer.data)
 len = length(customer.data$id)
@@ -562,6 +603,12 @@ customer.data$userType <- user.type
 # maxDate related data for the each user.
 customer.data.segOne <- customer.data %>% group_by(id) %>% filter(date == max(date)) 
 customer.data.segOne <- subset(customer.data.segOne,select = c('pages','onsite', 'userType'))#, 'entered', 'completed'))
+
+
+#Summary of the customer classification for differnet user type  
+kable(summary(customer.data.segOne), digits = c(3, 3, 3, 3), format = "pandoc")
+
+
 #split into training and test dataset
 customer.data.segOne <- transform(
   customer.data.segOne,
@@ -569,6 +616,9 @@ customer.data.segOne <- transform(
   onsite=as.integer(onsite),
   userType = as.factor(userType)
 )
+
+
+set.seed(1)
 dt = sort(sample(nrow(customer.data.segOne), nrow(customer.data.segOne)*.7))
 train.segOne<-customer.data.segOne[dt,]
 test.segOne<-customer.data.segOne[-dt,]
@@ -577,7 +627,6 @@ test.segOne<-customer.data.segOne[-dt,]
 
 #random forest
 ```{r}
-set.seed(1)
 customer.segOne.rf <- randomForest(
   as.factor(userType) ~ ., 
   data = train.segOne, 
