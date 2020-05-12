@@ -385,6 +385,65 @@ kable(summary(cancelled.customers.train), digits = c(3, 3, 3, 3), format = "pand
   - 3 : `Active`
   - 4 : `Napping`  
 
+#QQ plot visualization
+  
+construct the data to draw the QQ plot to examine the performance of our group
+```{r}
+#aggregate the dta
+aggregate_customer <- cancelled.customers.train
+aggregate_customer$segment.label <- ifelse(aggregate_customer$segment == 1,'sleeping',ifelse(aggregate_customer$segment == 2,'Cancelled',ifelse(aggregate_customer$segment == 3,'Active','Napping')
+))
+aggregate_customer$status.label <- ifelse(aggregate_customer$lastStatus == 1,'Active User','Non-Active User')
+
+```
+
+
+Compare the distribution of the original status and the clustering segment. We want to see the differences of order completed based on their qunatile distribution.
+```{r}
+# calculate the normal theoretical quantiles per group
+df1 <- ddply(.data = aggregate_customer, .variables = .(status.label,segment.label), function(dat){
+             q <- qqnorm(dat$completed, plot = FALSE)
+             dat$xq <- q$x
+             dat
+}
+)
+
+# plot the sample values against the theoretical quantiles
+ggplot(data = df1, aes(x = xq, y = completed)) +
+  geom_point() +
+  labs(title = 'QQ plots', x = 'Normal Quantiles', y = 'Data Completed Quantiles')+
+  facet_grid(status.label ~ segment.label)
+```
+
+```{r}
+#normalize the lifespan
+# standardize the birth weights
+aggregate_customer = mutate(aggregate_customer, 
+                 lifespan.norm = (lifespan - min(lifespan,na.rm = TRUE))/
+                   (max(lifespan,na.rm = TRUE) - min(lifespan,na.rm = TRUE)))
+
+```
+
+```{r}
+# calculate the normal theoretical quantiles per group
+df2 <- ddply(.data = aggregate_customer, .variables = .(status.label,segment.label), function(dat){
+             q <- qqnorm(dat$lifespan.norm, plot = FALSE)
+             dat$xq <- q$x
+             dat
+}
+)
+
+# plot the sample values against the theoretical quantiles
+ggplot(data = df2, aes(x = xq, y = lifespan.norm)) +
+  geom_point() +  
+  labs(title = 'QQ plots', x = 'Normal Quantiles', y = 'lifespan Quantiles')+
+  facet_grid(status.label ~ segment.label)
+```
+
+
+#Based of the observation of the qunatile plot, we can notise that our clustering performance is great. 
+#Further explanation would be written later
+
 # Predicting via Random Forest
 ```{r, cache=TRUE}
 
