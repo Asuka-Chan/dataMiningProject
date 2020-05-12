@@ -1,6 +1,5 @@
 ---
 title: "ltvProject"
-author: "Blake Tian"
 output: html_document
 ---
 
@@ -41,7 +40,6 @@ library(caret)
 library(rpart)
 library(randomForest)
 library(pROC)
-library(readxl)
 library(binaryLogic)
 library(dplyr)
 library(class)
@@ -53,11 +51,12 @@ library(glmnet)
 library(cluster)
 library(ggdendro)
 library(knitr)
+library(readxl)
 ```
 
 ```{r, cache = TRUE}
 # Importing the data directly from Excel
-customer.data <- read_excel("C://Users//nelli//Downloads//ltv Dataset.xlsx", sheet = "Sheet1")
+customer.data <- read_excel("ltv Dataset.xlsx", sheet = "Sheet1")
 ```
 
 ```{r, cache = TRUE}
@@ -76,6 +75,7 @@ customer.data <- transform(
 )
 #Summarizing the raw data set we are using
 kable(summary(customer.data), digits = c(3, 3, 3, 3), format = "pandoc")
+
 ```
 
 ```{r}
@@ -244,10 +244,39 @@ aggregatedCustomerSums <- rename(aggregatedCustomerSums, id = Customerid, pages 
 
 #Summary of the aggregated summation of each customer 
 kable(summary(aggregatedCustomerSums), digits = c(3, 3, 3, 3), format = "pandoc")
-
-
 ```
 
+```{r}
+classMetrics <- function(conf.mat) {
+  n <- sum(conf.mat)
+  
+  if (nrow(conf.mat) == 2) {
+    accuracy <- (conf.mat[2,2] + conf.mat[1,1])/n
+    sensitivity <- conf.mat[2,2]/(conf.mat[2,2]+conf.mat[1,2])
+    specificity <- conf.mat[1,1]/(conf.mat[1,1]+conf.mat[2,1])
+    ppv <- conf.mat[2,2]/(conf.mat[2,2]+conf.mat[2,1])
+    npv <- conf.mat[1,1]/(conf.mat[1,1]+conf.mat[1,2]) 
+  } else if (nrow(conf.mat) == 3) {
+    accuracy <- (conf.mat[2,2] + conf.mat[1,1] + conf.mat[3,3])/n
+    sensitivity <- conf.mat[3,3]/(conf.mat[3,3]+conf.mat[2,3]+conf.mat[1,3])
+    specificity <- (conf.mat[1,2]+conf.mat[1,1]+conf.mat[2,1]+conf.mat[2,2])/(conf.mat[3,2]+conf.mat[2,2]+conf.mat[1,2]+conf.mat[3,1]+conf.mat[2,1]+conf.mat[1,1])
+    ppv <- conf.mat[3,3]/(conf.mat[3,1]+conf.mat[3,2]+conf.mat[3,3])
+    npv <- (conf.mat[1,2]+conf.mat[1,1]+conf.mat[2,1]+conf.mat[2,2])/(conf.mat[1,1]+conf.mat[1,2]+conf.mat[1,3]+conf.mat[2,1]+conf.mat[2,2]+conf.mat[2,3])
+  } else if (nrow(conf.mat) == 4) {
+    accuracy <- (conf.mat[2,2] + conf.mat[1,1] + conf.mat[3,3]+ conf.mat[4,4])/n
+    sensitivity <- conf.mat[4,4]/(conf.mat[1,4]+conf.mat[2,4]+conf.mat[3,4]+conf.mat[4,4])
+    specificity <- (conf.mat[1,1]+conf.mat[1,2]+conf.mat[1,3]+conf.mat[2,1]+conf.mat[2,2]+conf.mat[2,3]+conf.mat[3,1]+conf.mat[3,2]+conf.mat[3,3])/(conf.mat[1,1]+conf.mat[1,2]+conf.mat[1,3]+conf.mat[2,1]+conf.mat[2,2]+conf.mat[2,3]+conf.mat[3,1]+conf.mat[3,2]+conf.mat[3,3]+conf.mat[4,1]+conf.mat[4,2]+conf.mat[4,3])
+    ppv <- conf.mat[4,4]/(conf.mat[4,1]+conf.mat[4,2]+conf.mat[4,3]+conf.mat[4,3]) 
+    npv <- (conf.mat[1,1]+conf.mat[1,2]+conf.mat[1,3]+conf.mat[2,1]+conf.mat[2,2]+conf.mat[2,3]+conf.mat[3,1]+conf.mat[3,2]+conf.mat[3,3])/(conf.mat[1,1]+conf.mat[1,2]+conf.mat[1,3]+conf.mat[2,1]+conf.mat[2,2]+conf.mat[2,3]+conf.mat[3,1]+conf.mat[3,2]+conf.mat[3,3]+conf.mat[1,4]+conf.mat[2,4]+conf.mat[3,4]) 
+  }
+
+  result <- data.frame()
+  result <- data.frame("value" = c(accuracy, sensitivity, specificity,ppv,npv))
+  row.names(result) <- c("accuracy", "sensitivity", "specificity","ppv","npv")
+  
+  return(result)
+}
+```
 
 ## 1.	Develop an attrition model, to predict whether a customer will cancel their subscription in the near future. Characterize your model performance.
 
@@ -346,7 +375,6 @@ segmented.customers
 #Our train set contains all 10,000 users
 cancelled.customers.train$segment <- members
 
-
 #Summary of the customer segmentation data set 
 kable(summary(cancelled.customers.train), digits = c(3, 3, 3, 3), format = "pandoc")
 ```
@@ -379,10 +407,8 @@ customer.segements.rf.predict <- predict(customer.segements.rf, customer.segemen
 customer.segements.rf.table <- table(customer.segements.rf.predict, customer.segements.test$segment)
 customer.segements.rf.table
 
-# Determine accuracy of the model
-customer.segements.rf.misclass = mean(customer.segements.rf.predict != customer.segements.test$segment)
-1- customer.segements.rf.misclass
-
+# display the measurement of confusion martixs
+classMetrics(customer.segements.rf.table)
 ```
 #SVM performance for the above
 
@@ -395,9 +421,9 @@ customer.segements.svm.pred <- predict(customer.segements.svm, customer.segement
 #Confusion matric for the same
 conf.mat.segments.svm<-table(customer.segements.svm.pred, customer.segements.test$segment)
 conf.mat.segments.svm
-#Determine the accuracy
-conf.mat.segments.svm.accuracy<- sum(diag(conf.mat.segments.svm)) / sum(conf.mat.segments.svm)
-conf.mat.segments.svm.accuracy
+
+# display the measurement of confusion martixs
+classMetrics(conf.mat.segments.svm)
 ```
 - The accuracy is only 73.99 %. Let us try tuning the model for better prediction rates
 
@@ -406,6 +432,7 @@ conf.mat.segments.svm.accuracy
 customer.seg.svm.tuned <-tune.svm(customer.segements.train, as.factor(customer.segements.train$segment), gamma=c(0.1, 1, 10), cost=10^(-1:2))
 print(customer.seg.svm.tuned)
 ```
+
 ```{r, eval=FALSE}
 #View how the performance changes-  Darker regions indicate better accuracy.
 plot(customer.seg.svm.tuned)
@@ -416,13 +443,23 @@ customer.seg.svm.best.pred <- predict(customer.seg.svm.best, customer.segements.
 #print the confusion matrix
 conf.mat.svm.best<-table(customer.seg.svm.best.pred, customer.segements.test$segment)
 conf.mat.svm.best
-#Determine the accuracy
-conf.mat.svm.best.accuracy<- sum(diag(conf.mat.svm.best)) / sum(conf.mat.svm.best)
-conf.mat.svm.best.accuracy
 
+# display the measurement of confusion martixs
+classMetrics(conf.mat.svm.best)
 ```
 
-# Second Method: predict the specific lifespan of each customer
+```{r, fig.height = 5, fig.width = 5}
+# Plotthe performance of each model
+roc.Class1.rf <- multiclass.roc(customer.segements.test$segment, as.numeric(customer.segements.rf.predict))
+rs <- roc.Class1.rf[['rocs']]
+plot.roc(rs[[1]], col = "red", lty=2, main = "Task1 Cluster-Classification ROC")
+roc.Class1.svm <- multiclass.roc(customer.segements.test$segment, as.numeric(customer.segements.svm.pred))
+rs <- roc.Class1.svm[['rocs']]
+plot(rs[[1]], col = "green", lty = 3, add = TRUE)
+roc.Class1.svm.best <- multiclass.roc(customer.segements.test$segment, as.numeric(customer.seg.svm.best.pred))
+rs <- roc.Class1.svm.best[['rocs']]
+plot(rs[[1]], col = "blue", lty = 3, add = TRUE)
+```
 
 # Second Method: classification
 
@@ -496,10 +533,8 @@ customer.classify.logit.pred[customer.classify.logit.probs>0.5] = "2"
 customer.classify.logit.table <- table(customer.classify.logit.pred, customer.classify.test$status)
 customer.classify.logit.table
 
-# calculate the accuracy of our Logistic Regression model
-customer.classify.logit.misclass <- mean(customer.classify.logit.pred != customer.classify.test$status)
-customer.classify.logit.accuracy <- 1 - customer.classify.logit.misclass
-customer.classify.logit.accuracy
+# display the measurement of confusion martixs
+classMetrics(customer.classify.logit.table)
 ```
 
 ```{r,cache = true}
@@ -511,10 +546,8 @@ customer.classify.rf.predict <- predict(customer.classify.rf, customer.classify.
 customer.classify.rf.table <- table(customer.classify.rf.predict, customer.classify.test$status)
 customer.classify.rf.table
 
-# calculate the accuracy of our random forest model
-customer.classify.rf.misclass = mean(customer.classify.rf.predict != customer.classify.test$status)
-customer.classify.rf.accuracy <- 1- customer.classify.rf.misclass
-customer.classify.rf.accuracy
+# display the measurement of confusion martixs
+classMetrics(customer.classify.rf.table)
 ```
 
 ```{r}
@@ -526,10 +559,8 @@ customer.classify.nb.pred <- predict(customer.classify.nb, customer.classify.tes
 customer.classify.nb.table<-table(customer.classify.nb.pred, customer.classify.test$status)
 customer.classify.nb.table
 
-# calculate the accuracy of our Naive Bayes model
-customer.classify.nb.misclass = mean(customer.classify.nb.pred != customer.classify.test$status)
-customer.classify.nb.accuracy <- 1- customer.classify.nb.misclass
-customer.classify.nb.accuracy
+# display the measurement of confusion martixs
+classMetrics(customer.classify.nb.table)
 ```
 
 ```{r}
@@ -540,10 +571,24 @@ customer.classify.svm.pred <- predict(customer.classify.svm, customer.classify.t
 customer.classify.svm.table<-table(customer.classify.svm.pred, customer.classify.test$status)
 customer.classify.svm.table
 
-# calculate the accuracy of our svm model
-customer.classify.svm.misclass = mean(customer.classify.svm.pred != customer.classify.test$status)
-customer.classify.svm.accuracy <- 1- customer.classify.svm.misclass
-customer.classify.svm.accuracy
+# display the measurement of confusion martixs
+classMetrics(customer.classify.svm.table)
+```
+
+```{r, fig.height = 5, fig.width = 5}
+# Plotthe performance of each model
+roc.Class2.rf <- multiclass.roc(customer.classify.test$status, as.numeric(customer.classify.rf.predict))
+rs <- roc.Class2.rf[['rocs']]
+plot.roc(rs[[1]], col = "red", lty=2, main = "Task1 Direct Classification ROC")
+roc.Class2.logit <- multiclass.roc(customer.classify.test$status, as.numeric(customer.classify.logit.pred))
+rs <- roc.Class2.logit[['rocs']]
+plot(rs[[1]], col = "black", lty = 3, add = TRUE)
+roc.Class2.nb <- multiclass.roc(customer.classify.test$status, as.numeric(customer.classify.nb.pred))
+rs <- roc.Class2.nb[['rocs']]
+plot(rs[[1]], col = "blue", lty = 3, add = TRUE)
+roc.Class2.svm <- multiclass.roc(customer.classify.test$status, as.numeric(customer.classify.svm.pred))
+rs <- roc.Class2.svm[['rocs']]
+plot(rs[[1]], col = "green", lty = 3, add = TRUE)
 ```
 
 
@@ -604,10 +649,8 @@ customer.data$userType <- user.type
 customer.data.segOne <- customer.data %>% group_by(id) %>% filter(date == max(date)) 
 customer.data.segOne <- subset(customer.data.segOne,select = c('pages','onsite', 'userType'))#, 'entered', 'completed'))
 
-
 #Summary of the customer classification for differnet user type  
 kable(summary(customer.data.segOne), digits = c(3, 3, 3, 3), format = "pandoc")
-
 
 #split into training and test dataset
 customer.data.segOne <- transform(
@@ -617,12 +660,10 @@ customer.data.segOne <- transform(
   userType = as.factor(userType)
 )
 
-
 set.seed(1)
 dt = sort(sample(nrow(customer.data.segOne), nrow(customer.data.segOne)*.7))
 train.segOne<-customer.data.segOne[dt,]
 test.segOne<-customer.data.segOne[-dt,]
-
 ```
 
 #random forest
@@ -641,8 +682,9 @@ varImpPlot(customer.segOne.rf)
 customer.segOne.pred <- predict(customer.segOne.rf, test.segOne)
 customer.segOne.rfResult<- table(test.segOne$userType, customer.segOne.pred)
 customer.segOne.rfResult
-accuracy<- sum(diag(customer.segOne.rfResult)) / sum(customer.segOne.rfResult)
-accuracy
+
+# display the measurement of confusion martixs
+classMetrics(customer.segOne.rfResult)
 ```
 
 # Logistic Regression
@@ -656,9 +698,9 @@ customer.segOne.lr.pred <- predict(customer.segOne.lr,newdata=test.segOne)
 #create a confusion matrix
 customer.segOne.lr.conf <-table(customer.segOne.lr.pred, test.segOne$userType)
 prop.table(customer.segOne.lr.conf)
-#determine the accuracy of the model
-customer.segOne.lr.accuracy<- sum(diag(customer.segOne.lr.conf)) / sum(customer.segOne.lr.conf)
-customer.segOne.lr.accuracy
+
+# display the measurement of confusion martixs
+classMetrics(customer.segOne.lr.conf)
 ```
 
 # Naive Bayes
@@ -672,10 +714,23 @@ customer.segOne.nb.pred <- predict(customer.segOne.nb, newdata=test.segOne)
 #create a confusion matrix
 customer.segOne.nb.conf <-table(customer.segOne.nb.pred, test.segOne$userType)
 prop.table(customer.segOne.nb.conf)
-#determine the accuracy of the model
-customer.segOne.nb.accuracy<- sum(diag(customer.segOne.nb.conf)) / sum(customer.segOne.nb.conf)
-customer.segOne.nb.accuracy
+
+# display the measurement of confusion martixs
+classMetrics(customer.segOne.nb.conf)
 ```
+```{r, fig.height = 5, fig.width = 5}
+# Plotthe performance of each model
+roc.Seg1.rf <- multiclass.roc(test.segOne$userType, as.numeric(customer.segOne.pred))
+rs <- roc.Seg1.rf[['rocs']]
+plot.roc(rs[[1]], col = "red", lty=2, main = "Segmentation 1 ROC")
+roc.Seg1.logit <- multiclass.roc(test.segOne$userType, as.numeric(customer.segOne.lr.pred))
+rs <- roc.Seg1.logit[['rocs']]
+plot(rs[[1]], col = "black", lty = 3, add = TRUE)
+roc.Seg1.nb <- multiclass.roc(test.segOne$userType, as.numeric(customer.segOne.nb.pred))
+rs <- roc.Seg1.nb[['rocs']]
+plot(rs[[1]], col = "blue", lty = 3, add = TRUE)
+```
+
 # Segmentation 2: Decisive customers, Tentative customers, Hesitant customers
 - Variables: Gender, onsite, pages, entered, completed
 - Classification label: completed / entered 
@@ -717,10 +772,9 @@ customer.rf
 customer.rf.predict <- predict(customer.rf, decisive.test)
 customer.rf.table <- table(customer.rf.predict, decisive.test$decisivelabel)
 customer.rf.table
-# calculate the accuracy of our random forest model
-customer.rf.misclassificationrate = mean(customer.rf.predict != decisive.test$decisivelabel)
-customer.rf.accuracy <- 1- customer.rf.misclassificationrate
-customer.rf.accuracy
+
+# display the measurement of confusion martixs
+classMetrics(customer.rf.table)
 ```
 
 
@@ -732,10 +786,9 @@ customer.knn
 customer.knn.predict <- predict(customer.knn, decisive.test)
 customer.knn.table <- table(customer.knn.predict, decisive.test$decisivelabel)
 customer.knn.table
-# calculate the accuracy of our random forest model
-customer.knn.misclassificationrate = mean(customer.knn.predict != decisive.test$decisivelabel)
-customer.knn.accuracy <- 1- customer.knn.misclassificationrate
-customer.knn.accuracy
+
+# display the measurement of confusion martixs
+classMetrics(customer.knn.table)
 ```
 
 ```{r}
@@ -745,8 +798,9 @@ decisve.ml
 logit.pred <- decisve.ml %>% predict(decisive.test)
 conf.mat.logit<-table(logit.pred, decisive.test$decisivelabel)
 conf.mat.logit
-logit.accuracy<- sum(diag(conf.mat.logit)) / sum(conf.mat.logit)
-logit.accuracy
+
+# display the measurement of confusion martixs
+classMetrics(conf.mat.logit)
 ```
 
 ```{r}
@@ -755,9 +809,11 @@ decisive.nb <-naiveBayes(decisivelabel ~ . , data = decisive.train, laplace=1)
 decisive.nb.pred <- predict(decisive.nb, decisive.test)
 conf.mat.nb<-table(decisive.nb.pred, decisive.test$decisivelabel)
 conf.mat.nb
-nb.accuracy<- sum(diag(conf.mat.nb)) / sum(conf.mat.nb)
-nb.accuracy
+
+# display the measurement of confusion martixs
+classMetrics(conf.mat.nb)
 ```
+
 
 ```{r}
 #SVM
@@ -765,8 +821,27 @@ decisive.svm <-svm(decisivelabel ~ . , data = decisive.train, type = 'C-classifi
 decisive.svm.pred <- predict(decisive.svm, decisive.test)
 conf.mat.svm<-table(decisive.svm.pred, decisive.test$decisivelabel)
 conf.mat.svm
-svm.accuracy<- sum(diag(conf.mat.svm)) / sum(conf.mat.svm)
-svm.accuracy
+
+# display the measurement of confusion martixs
+classMetrics(conf.mat.svm)
 ```
 
-## Random forest is the best
+```{r, fig.height = 5, fig.width = 5}
+# Plotthe performance of each model
+roc.Seg2.rf <- multiclass.roc(decisive.test$decisivelabel, as.numeric(customer.rf.predict))
+rs <- roc.Seg2.rf[['rocs']]
+plot.roc(rs[[1]], col = "red", lty=2, main = "Segmentation 2 ROC")
+roc.Seg2.knn <- multiclass.roc(decisive.test$decisivelabel, as.numeric(customer.knn.predict))
+rs <- roc.Seg2.knn[['rocs']]
+plot(rs[[1]], col = "steelblue", lty = 3, add = TRUE)
+roc.Seg2.logit <- multiclass.roc(decisive.test$decisivelabel, as.numeric(logit.pred))
+rs <- roc.Seg2.logit[['rocs']]
+plot(rs[[1]], col = "black", lty = 3, add = TRUE)
+roc.Seg2.nb <- multiclass.roc(decisive.test$decisivelabel, as.numeric(decisive.nb.pred))
+rs <- roc.Seg2.nb[['rocs']]
+plot(rs[[1]], col = "blue", lty = 3, add = TRUE)
+roc.Seg2.svm <- multiclass.roc(decisive.test$decisivelabel, as.numeric(decisive.svm.pred))
+rs <- roc.Seg2.svm[['rocs']]
+plot(rs[[1]], col = "green", lty = 3, add = TRUE)
+```
+## Random forest performs the best
