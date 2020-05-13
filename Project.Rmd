@@ -1,6 +1,7 @@
 ---
 title: "ltvProject"
-author: "Venturers-Group 3: Sixuan Tian, Yi Chen Huang, Ruixin Huang, Anita Nelliat"
+Group: "Venturers-Group 3" 
+Members: "Sixuan Tian, Yi Chen Huang, Ruixin Huang, Anita Nelliat"
 output: 
   html_document:
     toc: true
@@ -39,6 +40,9 @@ The following is a description of each field captured in the enclosed data set c
  -Develop a customer segmentation scheme. Include in this scheme the identification of sleeping customers, those that are no longer active but have not canceled their account.
 
 ```{r, message=FALSE}
+library(dplyr)
+library(plyr)
+library(reshape2)
 library(tidyverse)
 library(ggplot2)
 library(ISLR)
@@ -59,7 +63,8 @@ library(cluster)
 library(ggdendro)
 library(knitr)
 library(readxl)
-library(plyr)
+library(factoextra)
+library(scales)
 ```
 
 ```{r, cache = TRUE}
@@ -129,8 +134,6 @@ ltv.m1 <- merge(x = ltv.pages, y = ltv.onsite, by = c('id','month','year'), all.
 ```{r}
 #sort the dataframe and export it
 ltv.m1 <- ltv.m1[order(ltv.m1$id),]
-ltv.m1
-
 #Summary of the month based aggregated pre-processed data set
 kable(summary(ltv.m1), digits = c(3, 3, 3, 3), format = "markdown")
 
@@ -400,8 +403,9 @@ plot(1:15, wss, type="b", xlab="Number of Clusters",
   ylab="Within groups sum of squares")
 km.res <- kmeans(std.customer, 4, nstart = 25)
 str(km.res)
-clusplot(std.customer, km.res$cluster, color=TRUE, shade=TRUE,
-   labels=2, lines=0)
+#clusplot(std.customer, km.res$cluster, color=TRUE, shade=TRUE,
+#   labels=2, lines=0)
+fviz_cluster(km.res, data = std.customer)
 ```
  - K-Means seems to be very crowded and not very interpretatble. Let us try Heirarchical Clustering
 
@@ -534,9 +538,10 @@ ggplot(data = df2, aes(x = xq, y = lifespan.norm)) +
   labs(title = 'QQ plots', x = 'Normal Quantiles', y = 'lifespan Quantiles')+
   facet_grid(status.label ~ segment.label)
 ```
-#Based of the observation of the quantile plot, we can notice that our clustering performance is great. 
-#Further explanation would be written later
-
+--In general, we can notice that there are no data fall in [Cancelled - Acive User] pair and [Active - Non-Active User] pair, which means our clustering performance is great based of the observation of the quantile plot.
+On the one hand, it is interesting to metion the distribution of Napping and Sleeping user by Active user is quite similar in the first QQ plot. However, it changes a lot in the second QQ plot. It means we can assume that the customer performance of napping and sleeping user is similar. However, their lifetime is totolly different, the ifespan for napping user would be predictable while sleeping user is quite hard to predict.
+On the other hand, in term of the [napping-Non-Active User pair], we can observe the distribution of them all fall in the first harf quantails. which means the size and them is quite small and distribution looks quite wield. It makes sense to us, because if the original user labeled as non-active user, it should not be labeled as napping user. However, for these small case misclassfication, we can tolerant it.
+In brief, the QQ plot examine our clustering model performance is very good.
 
 
 - Using 70% of the `segmented.customers` dataset (with the users segmented into their groups) for training and the remaining 30% as the test set, we run the random forest and  SVM function with our output variable as `segment`.
@@ -594,6 +599,8 @@ plot.roc(rs[[1]], col = "red", lty=2, main = "Task1 Cluster-Classification ROC")
 roc.Class1.svm <- multiclass.roc(customer.segements.test$segment, as.numeric(customer.segements.svm.pred))
 rs <- roc.Class1.svm[['rocs']]
 plot(rs[[1]], col = "green", lty = 3, add = TRUE)
+legend("bottomright", c("Random Forest","SVM","SVM Best"), col = c("red","green","blue"),
+       lty = c(2,3,3), pch = c(-1, -1, -1))
 ```
 The above plot shows the ROC curves for the Random Forest (in red) and the SVM (in green).
 From the graph, we see that both Random Forests and SVM have almost similar sensitivity (true positive rate), with SVM very minutely varying at the beginning of the sensitivity-specificity threshold. 
@@ -703,7 +710,7 @@ We build 4 models using Logistic Regression, Random Forests, Naive Bayes and SVM
 
 # Predicting using Logistic Regression
 
-```{r,cache = true}
+```{r,cache = TRUE}
 #create the logistic regression model and use the model for predicting using the test set
 customer.classify.logit <- glm(as.factor(status)~., data = customer.classify.train, family="binomial")
 customer.classify.logit.probs <- predict(customer.classify.logit, customer.classify.test, type="response")
@@ -723,7 +730,7 @@ classMetrics(customer.classify.logit.table)
 - The logistic regression has an accuracy of 83.53%. This is a good classification.
 
 # Predicting using Random Forest
-```{r,cache = true}
+```{r,cache = TRUE}
 # build the random forest model for classification
 customer.classify.rf <- randomForest(status~., data=customer.classify.train, ntree=500, proximity=T,na.action = na.roughfix)
 customer.classify.rf
@@ -779,19 +786,74 @@ plot(rs[[1]], col = "blue", lty = 3, add = TRUE)
 roc.Class2.svm <- multiclass.roc(customer.classify.test$status, as.numeric(customer.classify.svm.pred))
 rs <- roc.Class2.svm[['rocs']]
 plot(rs[[1]], col = "green", lty = 3, add = TRUE)
+legend("bottomright", c("Random Forest","Logistic Regression","Naive Bayes","SVM"), col = c("red","black","blue","green"),
+       lty = c(2,3,3,3), pch = c(-1, -1, -1, -1))
 ```
 The above plot shows the ROC curves for the Random Forest (in red), Logistic Regression (in black), Naive Bayes (in blue) and the SVM (in green).
-From the graph, we see that both Logistic Regression and SVM have almost similar sensitivity (true positive rate), with SVM very minutely having a higher sensitivity-specificity threshold with higher sensitivity/specificity. As specificity increases Random forests also meet the same level of sensitivity as Logistic Regression adn SVM. 
+From the graph, we see that both Logistic Regression and SVM have almost similar sensitivity (true positive rate), with SVM very minutely having a higher sensitivity-specificity threshold with higher sensitivity/specificity. As specificity increases Random forests also meet the same level of sensitivity as Logistic Regression and SVM. 
 
 
-## 2.	Develop a model for estimating the ltv of a customer. Characterize your model performance.
+## 2. Develop a model for estimating the ltv of a customer. Characterize your model performance.
 
 ```{r}
+aggregatedCustomerSumsTask2 <- transform(
+  aggregatedCustomerSums,
+  lifespanByMonth = ceiling(lifespan/30)
+)
+
+aggregatedCustomerSumsTask2.drop <- c("id","status","gender","lifespan","decisiveratio","holiday.ratio","holiday.user")
+aggregatedCustomerSumsTask2 <- aggregatedCustomerSumsTask2[,!(names(aggregatedCustomerSumsTask2) %in% aggregatedCustomerSumsTask2.drop)]
 ```
+
+```{r}
+set.seed(42)
+#K-means Clustering
+aggregatedCustomerSumsTask2 <- na.omit(aggregatedCustomerSumsTask2) # listwise deletion of missing
+std.aggregatedCustomerSumsTask2 <- rescale(data.matrix(aggregatedCustomerSumsTask2)) # standardize variables
+wss <- (nrow(std.aggregatedCustomerSumsTask2)-1)*sum(apply(std.aggregatedCustomerSumsTask2,2,var))
+for (i in 2:15) wss[i] <- sum(kmeans(std.aggregatedCustomerSumsTask2,
+   centers=i)$withinss)
+plot(1:15, wss, type="b", xlab="Number of Clusters",
+  ylab="Within groups sum of squares")
+km.ltv <- kmeans(std.aggregatedCustomerSumsTask2, 3, nstart = 25)
+str(km.ltv)
+fviz_cluster(km.ltv, data = std.aggregatedCustomerSumsTask2)
+```
+
+```{r}
+# decreasing the segments to 4
+clustered.ltv <- data.frame(km.ltv$centers)
+clustered.ltv <- data.frame(Type = c("Medium LTV", "High LTV", "Low LTV"),clustered.ltv)
+clustered.ltv <- transform (
+  clustered.ltv,
+  pages = pages * max(aggregatedCustomerSumsTask2),
+  onsite = onsite * max(aggregatedCustomerSumsTask2),
+  entered = entered * max(aggregatedCustomerSumsTask2),
+  completed = completed * max(aggregatedCustomerSumsTask2),
+  lifespanByMonth = lifespanByMonth * max(aggregatedCustomerSumsTask2)
+)
+clustered.ltv$lifetimeValue = clustered.ltv$lifespanByMonth * 1
+clustered.ltv
+```
+
+- Since predicting “specific” lifetime value might not generate much business value, we would like to segment our customers into three groups: High LTV group, Medium LTV group and Low LTV group.  By segmenting our customers into three groups, we can design different business plans for different groups. 
+- The LTV per customer is customer lifespan(in month) * the monthly subscription fee($1). We are using this formula to estimate the customer lifetime value and therefore generate a customer clustering based upon it.
+- After doing K-means clustering, we can see that High LTV group generates LTV two times larger than that of the Low LTV group. Thus, we should focus more on the High LTV group later when we are promoting.
+
 
 ## 3.	Develop a customer segmentation scheme. Include in this scheme the identification of sleeping customers, those that are no longer active but have not canceled their account.
 
-# Segmentation 1: Segmentation 1: Regular(users who have completed regularly irrespective of holidays), Sleeping, Holiday User(holiday based customers),  Inactive (canceled)
+# Segmentation 1: Segmentation 1: Regular(users who have completed regularly irrespective of holidays), Sleeping, Inactive (canceled); Holiday User and Non Holiday use 
+ 
+
+- In this section, the holiday user label depends on the proportion of the aggregrated sum of orders which completed in holiday, we treat the quantile distribution which larger than the third quantaile as the holiday user.
+
+```{r}
+aggregatedCustomerSums$holiday.ratio <- aggregatedCustomerSums$holiday/aggregatedCustomerSums$completed
+summary(aggregatedCustomerSums$holiday.ratio)
+aggregatedCustomerSums$holiday.user <- ifelse(aggregatedCustomerSums$holiday.ratio>0.4573,1,0)
+```
+
 
 - Variables: Completed, pages, onsite, entered
 - Classification label: Regular/Sleeping/Inactive
@@ -799,14 +861,6 @@ From the graph, we see that both Logistic Regression and SVM have almost similar
   - 2: if the customer has browsed the website >60 days of `12/31/2014` then classify the customer as sleeping.
   - 1: if the customer has recently browsed the website has been active within 60 days of `12/31/2014` then classify the customer as active.
 
-- data preprocssing:
-```{r}
-aggregatedCustomerSums$holiday.ratio <- aggregatedCustomerSums$holiday/aggregatedCustomerSums$completed
-summary(aggregatedCustomerSums$holiday.ratio)
-```
-```{r}
-aggregatedCustomerSums$holiday.user <- ifelse(aggregatedCustomerSums$holiday.ratio>0.4573,1,0)
-```
 
 ```{r}
 width = length(customer.data)
@@ -835,14 +889,17 @@ customer.data$userType <- user.type
 ```
 
 
+|      Data Field       | Description                                                                         | 
+|-----------------------|-------------------------------------------------------------------------------------|
+|     `pages`           | The overall average number of pages visited by the customer.                        |
+|     `onsite`          | The overall average number of minutes spent on the site by the customer.            |
+|     `userType`       | The user type which belong to the cluster number 1,2 and 3           |
+
 ```{r}
-#select the data we need, we do not want to overfit the model, and hence will only include data only the 
+#select the data we need, we do not want to overfit the model, and hence will only include all the data. 
 # maxDate related data for the each user.
 customer.data.segOne <- customer.data %>% group_by(id) %>% filter(date == max(date)) 
-customer.data.segOne <- subset(customer.data.segOne,select = c('pages','onsite', 'userType'))#, 'entered', 'completed'))
-
-#Summary of the customer classification for differnet user type  
-kable(summary(customer.data.segOne), digits = c(3, 3, 3, 3), format = "markdown")
+customer.data.segOne <- subset(customer.data.segOne,select = c('pages','onsite', 'userType'))
 
 #split into training and test dataset
 customer.data.segOne <- transform(
@@ -852,11 +909,15 @@ customer.data.segOne <- transform(
   userType = as.factor(userType)
 )
 
+#Summary of the customer classification for differnet user type  
+kable(summary(customer.data.segOne), digits = c(3, 3, 3, 3), format = "markdown")
+
 set.seed(1)
 dt = sort(sample(nrow(customer.data.segOne), nrow(customer.data.segOne)*.7))
 train.segOne<-customer.data.segOne[dt,]
 test.segOne<-customer.data.segOne[-dt,]
 ```
+-- In this section, we would use different classfication models to predict the user type based on the total page number and total onsite minutes. The result will be analyzed by confusion matrix and several classifer performance metrics.
 
 #random forest
 ```{r}
@@ -878,6 +939,8 @@ customer.segOne.rfResult
 # display the measurement of confusion martixs
 classMetrics(customer.segOne.rfResult)
 ```
+
+
 
 # Logistic Regression
 
@@ -910,6 +973,10 @@ prop.table(customer.segOne.nb.conf)
 # display the measurement of confusion martixs
 classMetrics(customer.segOne.nb.conf)
 ```
+Based on the observation of the models of Random Forest, Logistic Regression, Naive Bayes, we can found that Random Forest has the best performance.
+
+
+-- Visualize the ROC graph
 ```{r, fig.height = 5, fig.width = 5}
 # Plotthe performance of each model
 roc.Seg1.rf <- multiclass.roc(test.segOne$userType, as.numeric(customer.segOne.pred))
@@ -921,7 +988,13 @@ plot(rs[[1]], col = "black", lty = 3, add = TRUE)
 roc.Seg1.nb <- multiclass.roc(test.segOne$userType, as.numeric(customer.segOne.nb.pred))
 rs <- roc.Seg1.nb[['rocs']]
 plot(rs[[1]], col = "blue", lty = 3, add = TRUE)
+legend("bottomright", c("Random Forest","Logistic Regression","Naive Bayes"), col = c("red","black","blue"),
+       lty = c(2,3,3), pch = c(-1, -1, -1))
 ```
+The above plot shows the ROC curves for the Random Forest (in red), Logistic Regression (in black), Naive Bayes (in blue).
+From the graph, we see that both Logistic Regression and Random Forest have almost similar sensitivity (true positive rate), with Naive Bayes very minutely having a higher sensitivity-specificity threshold with higher sensitivity/specificity. As specificity increases Naive Bayes also meet the same level of sensitivity as Logistic Regression and Random Forest.
+
+
 
 # Segmentation 2: Decisive customers, Tentative customers, Hesitant customers
 - Variables: Gender, onsite, pages, entered, completed
@@ -934,6 +1007,16 @@ plot(rs[[1]], col = "blue", lty = 3, add = TRUE)
 summary(aggregatedCustomerSums$decisiveratio)
 ```
 
+
+|      Data Field       | Description                                                                         | 
+|-----------------------|-------------------------------------------------------------------------------------|
+|     `pages`           | The overall average number of pages visited by the customer.                        |
+|     `onsite`          | The overall average number of minutes spent on the site by the customer.            |
+|     `userType`       | The user type which belong to the cluster number 1,2 and 3           |
+|     `holiday`         | The total number of holiday orders by the customer.                                 |
+|     `gender`          | User gender ‘M’- male, ‘F’- female.     |
+|     `lifespan`        | The lifespan of the customer taken from the `customer.lifespan` dataset.  
+|     `deisivelabel`        | we define customer has three types -- decisive, tentative and hesitant and label them as 2, 1 and 0 repspectively
 
 ```{r}
 # create data labels 
@@ -956,8 +1039,11 @@ decisive.train<-rbind(train.h, train.t, train.d)
 decisive.test<-rbind(test.h, test.t, test.d)
 ```
 
-```{r, cache = TRUE}
+
+-- In this section, we would use five classfication models to predict the customer decisive label based on several features -- pages, onsite, userType, holiday, gender, lifespan and deisivelabel. The result will be analyzed by confusion matrix and several classifer performance metrics.
+
 # Random Forest
+```{r, cache = TRUE}
 # build the random forest model for classification
 customer.rf <- randomForest(decisivelabel~., data=decisive.train, ntree=500, proximity=T)
 customer.rf
@@ -969,9 +1055,8 @@ customer.rf.table
 classMetrics(customer.rf.table)
 ```
 
-
-```{r}
 # KNN
+```{r}
 train_control <- trainControl(method = "cv", number = 10)
 customer.knn <- train(decisivelabel~., data = decisive.train, trControl = train_control, method = "knn")
 customer.knn
@@ -983,8 +1068,8 @@ customer.knn.table
 classMetrics(customer.knn.table)
 ```
 
-```{r}
 # Mulrinomial Logistic Regression
+```{r}
 decisve.ml <- multinom(decisivelabel ~ . , data = decisive.train)
 decisve.ml
 logit.pred <- decisve.ml %>% predict(decisive.test)
@@ -995,8 +1080,8 @@ conf.mat.logit
 classMetrics(conf.mat.logit)
 ```
 
-```{r}
 # Naive Bayes
+```{r}
 decisive.nb <-naiveBayes(decisivelabel ~ . , data = decisive.train, laplace=1)
 decisive.nb.pred <- predict(decisive.nb, decisive.test)
 conf.mat.nb<-table(decisive.nb.pred, decisive.test$decisivelabel)
@@ -1006,9 +1091,8 @@ conf.mat.nb
 classMetrics(conf.mat.nb)
 ```
 
-
-```{r}
 #SVM
+```{r}
 decisive.svm <-svm(decisivelabel ~ . , data = decisive.train, type = 'C-classification', kernel = 'radial')
 decisive.svm.pred <- predict(decisive.svm, decisive.test)
 conf.mat.svm<-table(decisive.svm.pred, decisive.test$decisivelabel)
@@ -1017,6 +1101,8 @@ conf.mat.svm
 # display the measurement of confusion martixs
 classMetrics(conf.mat.svm)
 ```
+
+-- Based on the observation of the models of Random Forest, KNN, Mulrinomial Logistic Regression, Naive Bayes and SVM, we can found that Random Forest has the best performance.
 
 ```{r, fig.height = 5, fig.width = 5}
 # Plotthe performance of each model
@@ -1035,5 +1121,8 @@ plot(rs[[1]], col = "blue", lty = 3, add = TRUE)
 roc.Seg2.svm <- multiclass.roc(decisive.test$decisivelabel, as.numeric(decisive.svm.pred))
 rs <- roc.Seg2.svm[['rocs']]
 plot(rs[[1]], col = "green", lty = 3, add = TRUE)
+legend("bottomright", c("Random Forest","KNN","Logistic Regression","Naive Bayes","SVM"), col = c("red","steelblue","black","blue","green"),
+       lty = c(2,3,3,3,3), pch = c(-1, -1, -1, -1, -1))
 ```
-## Random forest performs the best
+The above plot shows the ROC curves for the Random Forest (in red),KNN (in steelblue) Logistic Regression (in black), Naive Bayes (in blue) and SVM (in green).
+From the graph, we see that only the performance of Random Forest looks acceptable.
