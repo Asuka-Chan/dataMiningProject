@@ -1,7 +1,8 @@
 ---
-title: "ltvProject"
-Group: "Venturers-Group 3" 
-Members: "Sixuan Tian, Yi Chen Huang, Ruixin Huang, Anita Nelliat"
+title: "Data mining Group Project"
+author: "Group Name: Venturers-Group 3
+         Members: Sixuan Tian, Yi Chen Huang, Ruixin Huang, Anita Nelliat
+         AndrewId: sixuant, yichenhu, ruixinh, anelliat" 
 output: 
   html_document:
     toc: true
@@ -10,7 +11,6 @@ output:
     highlight: tango
 
 ---
-
 
 # Project on Customer Analysis for an Online Greeting Card Company
 
@@ -548,7 +548,7 @@ ggplot(data = df2, aes(x = xq, y = lifespan.norm)) +
 ```
 
 - In general, we can notice that there are no data fall in [Cancelled - Acive User] pair and [Active - Non-Active User] pair, which means our clustering performance is great based of the observation of the quantile plot.
-On the one hand, it is interesting to metion the distribution of Napping and Sleeping user by Active user is quite similar in the first QQ plot. However, it changes a lot in the second QQ plot. It means we can assume that the customer performance of napping and sleeping user is similar. However, their lifetime is totolly different, the ifespan for napping user would be predictable while sleeping user is quite hard to predict.
+On the one hand, it is interesting to metion the distribution of Napping and Sleeping user by Active user is quite similar in the first QQ plot. However, it changes a lot in the second QQ plot. It means we can assume that the customer performance of napping and sleeping user is similar. However, their lifetime is totolly different, the lifespan for napping user would be predictable while sleeping user is quite hard to predict.
 On the other hand, in term of the [napping-Non-Active User pair], we can observe the distribution of them all fall in the first harf quantails. which means the size and them is quite small and distribution looks quite wield. It makes sense to us, because if the original user labeled as non-active user, it should not be labeled as napping user. However, for these small case misclassfication, we can tolerant it.
 - In brief, the QQ plot examine our clustering model performance is very good.
 
