@@ -456,10 +456,10 @@ aggregate(segmented.customers, by = list(members), mean)
 ```{r}
 # decreasing the segments to 4
 members = cutree(hierarchical.cluster, k = 4)
-segmented.customers <- as.data.frame(aggregate(segmented.customers, by = list(members), mean))
-segmented.customers <- segmented.customers %>% dplyr::rename(Type = Group.1)
-segmented.customers$Type <- c("Sleeping", "Cancelled", "Active", "Napping" )
-segmented.customers
+segmented.customers.df <- as.data.frame(aggregate(segmented.customers, by = list(members), mean))
+segmented.customers.df <- segmented.customers.df %>% dplyr::rename(Type = Group.1)
+segmented.customers.df$Type <- c("Sleeping", "Cancelled", "Active", "Napping" )
+segmented.customers.df
 ```
 - We are able to see 4 disticnt groups and hence segregate the users into one of the categories - `Sleeping`, `Cancelled`, `Napping` and `Active`. We assign these categories to the respective users.
  - In general we notice that as the lifespan increases many customers tend to stop/cancel the subscription. This is alarming to the company as it is clear that more effort must be maintained in retaining current subscribers. A clear indication that customers would leave based on increasing lifespan is the difference between the two ratios. Larger the lastToPrevLogin ratio compared to the lastToFirst the more likely that the customer would stop the subscription. 
