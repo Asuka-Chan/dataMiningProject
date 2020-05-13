@@ -1,14 +1,23 @@
 ---
 title: "ltvProject"
-output: html_document
+author: "Venturers-Group 3: Sixuan Tian, Yi Chen Huang, Ruixin Huang, Anita Nelliat"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: cerulean
+    highlight: tango
+
 ---
 
 
-## R Markdown
+##Project on Customer Analysis for an Online Greeting Card Company
+
+#Problem Statement
 
 Our client is an online greeting card company. The company offers monthly subscriptions at a rate of $1 per month for access to their eCard website. The client is interested in understanding the life-time value (ltv) of their customers.
 The life-time value of a customer is defined as the total revenue earned by the company over the course of their relationship with the customer.
-The enclosed (synthetic) data represent usage statistics for 10,000 customers. Usage is summarized at a daily level and covers a period of 4 years from 2011-01-01 to 2014-12-31.
+The `ltv Dataset.xlsx` dataset represents usage statistics for 10,000 customers. Usage is summarized at a daily level and covers a period of 4 years from 2011-01-01 to 2014-12-31.
 The following is a description of each field captured in the enclosed data set containing a total of 10,000 customers.
 
 | Data Field | Description                                                                         | 
@@ -22,14 +31,12 @@ The following is a description of each field captured in the enclosed data set c
 | `entered`  | Flag indicating whether or not user entered the send order path on date ‘date’      |
 | `completed`| Flag indicating whether the user completed the order (sent an eCard)                |
 | `holiday`  | Flag indicating whether at least one completed order included a holiday themed card |
-
-We must preprocess the data to determine the following: 
-
-| Data Field | Description                                                                         | 
 |------------|-------------------------------------------------------------------------------------|
-| `lifespan` | The lifespan of each customer in days, for cancelled customers= cancelDate-openDate,|
-|            | for open customers=maxDate-openDate+1/(cancelled customers/total customers)         |
 
+- Key tasks
+ -Develop an attrition model, to predict whether a customer will cancel their subscription in the near future. Characterize your model performance.
+ -Develop a model for estimating the ltv of a customer. Characterize your model performance.
+ -Develop a customer segmentation scheme. Include in this scheme the identification of sleeping customers, those that are no longer active but have not canceled their account.
 
 ```{r, message=FALSE}
 library(tidyverse)
@@ -52,6 +59,7 @@ library(cluster)
 library(ggdendro)
 library(knitr)
 library(readxl)
+library(plyr)
 ```
 
 ```{r, cache = TRUE}
@@ -74,9 +82,21 @@ customer.data <- transform(
   holiday=as.integer(holiday)
 )
 #Summarizing the raw data set we are using
-kable(summary(customer.data), digits = c(3, 3, 3, 3), format = "pandoc")
+kable(summary(customer.data), digits = c(3, 3, 3, 3), format = "markdown")
 
 ```
+#Data pre-processing 
+
+Before developing models to address the tasks, we must first pre-process the data. This is done by creating multiple subsets 
+of the data, with aggregated or other statistical details.
+
+We preprocess the main `customer.data` dataset and add the below columns: 
+
+| Data Field | Description                                                                         | 
+|------------|-------------------------------------------------------------------------------------|
+|  `month`   | The month of the corresponding date                                                 |
+|  `year`    | The year of the corresponding date                                                  |
+|------------|-------------------------------------------------------------------------------------|
 
 ```{r}
 #processing the date
@@ -84,6 +104,18 @@ customer.data$date <- as.Date(customer.data$date,'%m/%d/%Y')
 customer.data$month <- months(customer.data$date)
 customer.data$year <- format(customer.data$date,format = '%Y')
 ```
+
+We create a dataset, containing the averages of pages and onsite per customer on a monthly basis called `ltv.m1` dataset with the below columns: 
+
+| Data Field | Description                                                                         | 
+|------------|-------------------------------------------------------------------------------------|
+|   `id`     | The unique identifier of the customer                                               |
+|  `month`   | The month when the customer logged in                                               |
+|  `year`    | The corresponding year when the customer logged in                                  |
+|  `pages`   | The average number of pages visited by the customer in the given month              |
+| `onsite`   | The average number of minutes spent on the site by the customer in the given month  |
+|------------|-------------------------------------------------------------------------------------|
+
 
 ```{r}
 #calculate the average value
@@ -100,10 +132,24 @@ ltv.m1 <- ltv.m1[order(ltv.m1$id),]
 ltv.m1
 
 #Summary of the month based aggregated pre-processed data set
-kable(summary(ltv.m1), digits = c(3, 3, 3, 3), format = "pandoc")
+kable(summary(ltv.m1), digits = c(3, 3, 3, 3), format = "markdown")
 
+#
 write.csv(ltv.m1,'ltv_modelOne.csv',row.names = FALSE)
 ```
+
+Next, we create a dataset called `ltv.logins` which contains the number of times a customer accessed the site per month.
+Given below are the columns: 
+
+| Data Field | Description                                                                         | 
+|------------|-------------------------------------------------------------------------------------|
+|   `id`     | The unique identifier of the customer                                               |
+|  `month`   | The month when the customer logged in                                               |
+|  `year`    | The corresponding year when the customer logged in                                  |
+|  `count`   | The total number of times a customer visited the site in the given month            |
+|------------|-------------------------------------------------------------------------------------|
+
+
 ```{r}
 
 #find the overall login counts per month
@@ -115,59 +161,71 @@ ltv.logins <- ltv.logins[
   with(ltv.logins, order(id, year, match(ltv.logins$month, month.name))),]  %>% group_by(id)
 
 #Summary of the login counts based on months per customer
-kable(summary(ltv.logins), digits = c(3, 3, 3, 3), format = "pandoc")
+kable(summary(ltv.logins), digits = c(3, 3, 3, 3), format = "markdown")
 
 
 ```
 
+Since we are performing customer based analysis, the lifespan of the customer becomes an important characteristic that must be measure. We use the first and last recorded dates for each customer to determine this.
+A dataset called `customer.lifespan` is created containing the below: 
+
+| Data Field | Description                                                                         | 
+|------------|-------------------------------------------------------------------------------------|
+|   `id`     | The unique identifier of the customer                                               |
+|  `minDate` | The date when the customer joined the subscription                                  |
+|  `maxDate` | The date the customer cancelled or the last recorded date the customer logged in    |
+|  `status`  | The final status of the customer                                                    |
+| `lifespan` | The lifespan of each customer in days, which is maxDate-firstDate                   |
+|------------|-------------------------------------------------------------------------------------|
+
 ```{r, cache=TRUE}
-#convert the data from numeric to date type (duplicate) 
-#customer.data$date <- as.Date(customer.data$date, origin = "1899-12-30")
-#Calculate the customer lifespan 
-#first group the data by ID to find the max and min date for a given customer
-#along with the latest status 
+#To calculate the customer lifespan we first group the data
+#by ID to find the max and min date for a given customer
 customer.lifespan <- customer.data[, c("id", "date", "status")] %>% group_by(id)
-customer.lifespan <-customer.lifespan %>% mutate(maxDate = max(date)) 
-#we can asssume that a maxstatus of 0 => that the user just created the account and did not login 
-#after, we will consider such a scenario as active
-customer.lifespan <-customer.lifespan %>% mutate(status = ifelse(max(status)==0, 1,max(status))) 
-customer.lifespan <- customer.lifespan %>% filter(date == min(date)) %>% distinct(id, .keep_all = TRUE) %>% rename(minDate = date)
+customer.lifespan <-customer.lifespan %>% dplyr::mutate(maxDate = max(date)) 
+
+#we can asssume that a maxstatus of 0 => that the user just created 
+#the account and did not loginafter, we will consider such a scenario as active
+customer.lifespan <-customer.lifespan %>% dplyr::mutate(status = ifelse(max(status)==0, 1,max(status))) 
+customer.lifespan <- customer.lifespan %>% dplyr::filter(date == min(date)) %>% dplyr::distinct(id, .keep_all = TRUE) %>% dplyr::rename(minDate = date)
+
 #Subtract the maxDate and minDate to determine the number of days of subscription
-customer.lifespan$subDays <- as.integer(difftime(customer.lifespan$maxDate, customer.lifespan$minDate, units = "days"))
-#Determine the observed lifespan factor to be added
-lifespanFraction <- 1/(with(1, sum(customer.data$status == 2))/10000)
-#calculate the lifespan for the customers
-customer.lifespan$lifespan <- customer.lifespan$subDays
+customer.lifespan$lifespan <- as.integer(difftime(customer.lifespan$maxDate, customer.lifespan$minDate, units = "days"))
 
-#find the max and min Months and years
-customer.lifespan$maxMonth <- months(customer.lifespan$maxDate)
-customer.lifespan$minYear <- format(customer.lifespan$maxDate,format = '%Y')
-customer.lifespan$minMonth <- months(customer.lifespan$minDate)
-customer.lifespan$minYear <- format(customer.lifespan$minDate,format = '%Y')
-
-
-#customer.lifespan$lifespan <- ifelse(customer.lifespan$status == 2, customer.lifespan$subDays, customer.lifespan$subDays + lifespanFraction)
 #add this data to the main dataset 
 customer.data$lifespan <- customer.lifespan$lifespan[match(customer.data$id,customer.lifespan$id)]
 
-
 #Summary of the customer lifespan based pre-processed data set
-kable(summary(customer.lifespan), digits = c(3, 3, 3, 3), format = "pandoc")
+kable(summary(customer.lifespan), digits = c(3, 3, 3, 3), format = "markdown")
 
 ```
+We have a dataset that defines the averages over a month based range, we now calculate the overall averages per customer for the `pages`, `onsite` and `completed` predictors. This is put into the `customer.overall.means` dataset with the following columns: 
+
+|      Data Field       | Description                                                                         | 
+|-----------------------|-------------------------------------------------------------------------------------|
+|     `id`              | The unique identifier of the customer                                               |
+|     `pages`           | The overall average number of pages visited by the customer.                        |
+|     `onsite`          | The overall average number of minutes spent on the site by the customer.            |
+|     `completed`       | The overall average completed orders by the customer.                               |
+|     `lastStatus`      | The final status of the customer.                                                   |
+|     `lifespan`        | The lifespan of the customer based on the first login to last login                 |
+|`lastToFirstLoginRatio`| The ratio of the no. of logins in the last month to the first month of a customer   |
+|`lastToPrevLoginRatio` | The ratio of the no. of logins in the last month to the previous to last month      |
+|-----------------------|-------------------------------------------------------------------------------------|                                                                               
 
 ```{r}
 #Determine the averages of pages, onsite and completed per customer over their lifespan
 customer.overall.means <- aggregate(customer.data[, c("pages", "onsite", "completed")], list(customer.data$id), mean)
-customer.overall.means <- customer.overall.means %>% rename(id = Group.1)
+customer.overall.means <- customer.overall.means %>% dplyr::rename(id = Group.1)
 customer.overall.means$lastStatus <- customer.lifespan$status
 customer.overall.means$lifespan <- customer.lifespan$lifespan
-#determine the logins in the first month, last and the last but one 
-customer.firstMonth.logins <- ltv.logins  %>%  filter(row_number()==1) %>% dplyr::select("id", "count")
-customer.previousMonth.logins <- ltv.logins  %>%  filter(row_number()==n()-1) %>% dplyr::select("id",  "count")
-customer.lastMonth.logins <- ltv.logins  %>%  filter(row_number()==n()) %>% dplyr::select("id", "count")
 
-#determine the login ratios of lastMonth to first and the last month to the last but on
+#determine the logins in the first month, last and the last but one 
+customer.firstMonth.logins <- ltv.logins  %>%  dplyr::filter(row_number()==1) %>% dplyr::select("id", "count")
+customer.previousMonth.logins <- ltv.logins  %>%  dplyr::filter(row_number()==n()-1) %>% dplyr::select("id",  "count")
+customer.lastMonth.logins <- ltv.logins  %>%  dplyr::filter(row_number()==n()) %>% dplyr::select("id", "count")
+
+#determine the login ratios of lastMonth to first and the last month to the last but one month.
 len = length(customer.overall.means$id)
 
 for (i in seq(length(customer.overall.means$id))) {
@@ -176,7 +234,8 @@ for (i in seq(length(customer.overall.means$id))) {
   firstMonthLogins <- customer.firstMonth.logins[which(customer.firstMonth.logins$id==curId),2]
   prevMonthLogins <- customer.previousMonth.logins[which(customer.previousMonth.logins$id==curId),2]
   if (is.na(prevMonthLogins$count[1])){
-    #print(curId)
+    #This value will be NA since for users who 
+    #just logged in once there is no previous month
     prevMonthLogins <- lastMonthLogins
   }
   customer.overall.means$lastToFirstLoginRatio[i] <- as.numeric(lastMonthLogins/firstMonthLogins)
@@ -185,7 +244,7 @@ for (i in seq(length(customer.overall.means$id))) {
 
 
 #Summary of the customer average site usage over their lifespan
-kable(summary(customer.overall.means), digits = c(3, 3, 3, 3), format = "pandoc")
+kable(summary(customer.overall.means), digits = c(3, 3, 3, 3), format = "markdown")
 
 
 ```
@@ -210,6 +269,14 @@ pairs(customer.overall.means[,c(-1)], lower.panel = panel.cor)
 ```
 - From the above plots, we see that most of the predictors have very low correlation among themselves. While `pages` and `completed` have a .76 correlation between them, we still consider both of them as part of the model as the value is not too high to imply complete correlation. Hence removing either could cause the model to miss out on certain insights.
 
+- After the preliminary data processing we create an `ltv_afterProcess` dataset containing the original data from the `customer.data` dataset with the addition of `CompletedVSHoliday` and `OnsiteVSEntered` columns. 
+
+|      Data Field    | Description                                                            | 
+|--------------------|------------------------------------------------------------------------|
+|`CompletedVSHoliday`| The ratio of the no. entered vs holiday e-cards attempted              |
+| `OnsiteVSEntered`  | The ratio of the no. onsite vs entered attempts by the customer        |
+|--------------------|------------------------------------------------------------------------| 
+
 ```{r, cache = TRUE}
 # Add 2 columns in the dataframe representing completed/holiday and onsite/entered
 ltv_afterProcess <- transform(
@@ -219,7 +286,7 @@ ltv_afterProcess <- transform(
 )
 
 #Summary of the complete data after pre-processing
-kable(summary(ltv_afterProcess), digits = c(3, 3, 3, 3), format = "pandoc")
+kable(summary(ltv_afterProcess), digits = c(3, 3, 3, 3), format = "markdown")
 
 ```
 
@@ -229,10 +296,30 @@ SumEnteredVSCompleted <- sum(ltv_afterProcess$entered)/sum(ltv_afterProcess$comp
 SumEnteredVSCompleted
 ```
 
+We then create the `aggregatedCustomerSums` dataframe which represents the sum of each variable - `pages`, `onsite`, `completed`, `entered` and `holiday` per customer. Note this is a summation.
+
+|      Data Field       | Description                                                                         | 
+|-----------------------|-------------------------------------------------------------------------------------|
+|     `id`              | The unique identifier of the customer                                               |
+|     `pages`           | The total number of pages visited by the customer.                                  |
+|     `onsite`          | The total number of minutes spent on the site by the customer.                      |
+|     `entered`         | The total number of sender entered orders by the customer.                          |
+|     `completed`       | The total number of completed orders by the customer.                               |
+|     `holiday`         | The total number of holiday orders by the customer.                                 |
+|     `gender`          | User gender ‘M’- male, ‘F’- female.                                                 |
+|     `status`          | The final status of the customer taken from the `customer.lifespan` dataset.        |
+|     `lifespan`        | The lifespan of the customer taken from the `customer.lifespan` dataset.            |
+|     `decisiveRatio`   | The degree to which customers are hestitant to complete the order. This is          | 
+|                       | calculated as Sum(`completed`)/Sum(`entered`) for each customer.                    |
+|-----------------------|-------------------------------------------------------------------------------------|
+
+
 ```{r, cache = TRUE}
 # create a new dataframe representing the aggregated summation of each variable per customer
 aggregatedCustomerSums <- aggregate(cbind(PagesSum=ltv_afterProcess$pages, OnsiteSum=ltv_afterProcess$onsite, EnteredSum=ltv_afterProcess$entered, CompletedSum=ltv_afterProcess$completed, HolidaySum=ltv_afterProcess$holiday), by=list(Customerid=ltv_afterProcess$id), FUN=sum)
-aggregatedCustomerSums<-merge(x = aggregatedCustomerSums, y = customer.data, intersect(names(aggregatedCustomerSums), names(customer.data)), by.x = "Customerid", by.y = "id", all.x=TRUE)[,c(names(aggregatedCustomerSums), "gender")]%>% distinct(Customerid, .keep_all=TRUE)
+#merge this with the customer data based on id, to retrive the gender column.
+aggregatedCustomerSums<-merge(x = aggregatedCustomerSums, y = customer.data, intersect(names(aggregatedCustomerSums), names(customer.data)), by.x = "Customerid", by.y = "id", all.x=TRUE)[,c(names(aggregatedCustomerSums), "gender")]%>% dplyr::distinct(Customerid, .keep_all=TRUE)
+
 aggregatedCustomerSums <- transform(
   aggregatedCustomerSums,
   gender = as.factor(gender),
@@ -240,11 +327,12 @@ aggregatedCustomerSums <- transform(
   lifespan = customer.lifespan$lifespan,
   decisiveratio = CompletedSum / EnteredSum
 )
-aggregatedCustomerSums <- rename(aggregatedCustomerSums, id = Customerid, pages = PagesSum, onsite = OnsiteSum, entered = EnteredSum, completed = CompletedSum, holiday = HolidaySum)
+aggregatedCustomerSums <- dplyr::rename(aggregatedCustomerSums, id = Customerid, pages = PagesSum, onsite = OnsiteSum, entered = EnteredSum, completed = CompletedSum, holiday = HolidaySum)
 
 #Summary of the aggregated summation of each customer 
-kable(summary(aggregatedCustomerSums), digits = c(3, 3, 3, 3), format = "pandoc")
+kable(summary(aggregatedCustomerSums), digits = c(3, 3, 3, 3), format = "markdown")
 ```
+Given below is the utility method to print out the performance metrics (Accuracy, Sensitivity, Specificity, PPV and NPV) for the models.
 
 ```{r}
 classMetrics <- function(conf.mat) {
@@ -280,6 +368,11 @@ classMetrics <- function(conf.mat) {
 
 ## 1.	Develop an attrition model, to predict whether a customer will cancel their subscription in the near future. Characterize your model performance.
 
+- To address this task, we look into two possible methods of predicting subscription cancellations: 
+ -In the first method, we segment/cluster the customer base into groups based on their user activity. Using these segments, we predict whether a customer would move into a lesser active/likely to cancel group. 
+ -In the second method, we classify our customer base on their recent subscription status to determine trends that can be used to predict the how much more likely a customer is to cancel their subscription.
+
+
 #First Method: predict whether a customer will cancel their subscription in the near future based on different segments customer
 
 We will try to determine if we can segment the customers into buckets and determine 
@@ -293,6 +386,9 @@ users into the appropriate segments:
 `Sleepin` - Customers who are not very active and are more likely to leave the subscription in the coming months
 `Cancelled` - Customers who have cancelled and will cancel for sure.
  
+- Dataset used : `customer.overall.means`
+
+- We first use K-Means to try to cluster our user base.
 
 ```{r}
 std.customer <- na.omit(customer.overall.means) # listwise deletion of missing
@@ -307,7 +403,7 @@ str(km.res)
 clusplot(std.customer, km.res$cluster, color=TRUE, shade=TRUE,
    labels=2, lines=0)
 ```
- - K-Means seems too crowded and not very interpretatble. Let us try Heirarchical Clustering
+ - K-Means seems to be very crowded and not very interpretatble. Let us try Heirarchical Clustering
 
 ```{r}
 
@@ -320,11 +416,11 @@ active.customers = createDataPartition(customer.overall.means$id[which(customer.
 
 customer.train <- rbind(active.customers, cancelled.customers)
 
+#The set is all the customers
 scalled.customer = scale(customer.overall.means[,-1])
-cancelled.customers.train = customer.overall.means[customer.train,-1 ]
-#cancelled.customers.test = customer.overall.means[-customer.train, -1]
-
+segmented.customers = customer.overall.means[customer.train,-1 ]
 scalled.customer.train  = scalled.customer[customer.train, ]
+
 # Compute distance metrics on the standardized customer data
 distanceMatrix = dist(scalled.customer.train)
 
@@ -336,7 +432,6 @@ hierarchical.dendogram <- as.dendrogram(hierarchical.cluster)
 hierarchical.dendogram <- dendro_data(hierarchical.dendogram, type = "rectangle")
 
 names(hierarchical.dendogram)
-#head(hierarchical.dendogram$segments)
 head(hierarchical.dendogram$labels)
 
 # Plot the dendogram
@@ -347,22 +442,22 @@ p <- ggplot(hierarchical.dendogram$segments) +
   ylim(-3, 15)+ ggtitle("Dendogram for Customer Segmentation")
 print(p)
 ```
-#The dendogram is too crowded and so we first try 5 segments and view the data
+- The dendogram is too crowded and so we first try 5 segments and view the data
 
 ```{r}
 members = cutree(hierarchical.cluster, k = 5)
-aggregate(cancelled.customers.train, by = list(members), mean)
+aggregate(segmented.customers, by = list(members), mean)
 ```
  - We can try to understand the profile of each segment.
- - Customer falling under segment/group2 2 and 4 are likely to have left or leave the subscription (in a month or two). The number of pages visited on average is the least and their life span is large. These are customers who most likely got bored or found other resources. The latter ratio of last month to prev seems to have increased by almost 100% when comapred to the last to first month ratio. 
- - Similarly, we see how customers belonging to the segment/group 1 have an average status towards 2. Their last month to first month login ratio as well as the prev to last month ratio is the highest. We can say that customers that come under this segment are likely to unscribe from the e-card greeting subscription. 
+ - Customer falling under segment/group2 2 and 4 are likely to have left or leave the subscription (in a month or two). The number of pages visited on average is the least (for group 4) and their life span is large. These are customers who most likely got bored or found other resources. The latter ratio of last month to prev seems to have increased by almost 100% when comapred to the last to first month ratio. 
+ - Similarly, we see how customers belonging to the segment/group 1 have an average status towards 2. Their last month to first month login ratio as well as the prev to last month ratio is the highest. We can say that customers that come under this segment are eventually likely to unscribe from the e-card greeting subscription. 
 
 - Let us try decreasing the segments to 4 to see if more distinct status based segments can be obtained 
 ```{r}
 # decreasing the segments to 4
 members = cutree(hierarchical.cluster, k = 4)
-segmented.customers <- as.data.frame(aggregate(cancelled.customers.train, by = list(members), mean))
-segmented.customers <- segmented.customers %>% rename(Type = Group.1)
+segmented.customers <- as.data.frame(aggregate(segmented.customers, by = list(members), mean))
+segmented.customers <- segmented.customers %>% dplyr::rename(Type = Group.1)
 segmented.customers$Type <- c("Sleeping", "Cancelled", "Active", "Napping" )
 segmented.customers
 ```
@@ -370,35 +465,35 @@ segmented.customers
  - In general we notice that as the lifespan increases many customers tend to stop/cancel the subscription. This is alarming to the company as it is clear that more effort must be maintained in retaining current subscribers. A clear indication that customers would leave based on increasing lifespan is the difference between the two ratios. Larger the lastToPrevLogin ratio compared to the lastToFirst the more likely that the customer would stop the subscription. 
  - However, we notice that customers are more likely to stay on, even if their lifespan on average is large, if their browsing ratios are maintained within a 50% to 80% range.
 
-
-```{r}
-#Our train set contains all 10,000 users
-cancelled.customers.train$segment <- members
-
-#Summary of the customer segmentation data set 
-kable(summary(cancelled.customers.train), digits = c(3, 3, 3, 3), format = "pandoc")
-```
- 
- - The below values refer to the segments:
+- With the help of the clustered groups, we assign users into their respective segments.
   - 1 : `Sleeping`
   - 2 : `Cancelled`
   - 3 : `Active`
   - 4 : `Napping`  
 
+```{r}
+#Our train set contains all 10,000 users
+segmented.customers$segment <- members
+
+#Summary of the customer segmentation data set 
+kable(summary(segmented.customers), digits = c(3, 3, 3, 3), format = "markdown")
+```
+ 
 #QQ plot visualization
-  
-construct the data to draw the QQ plot to examine the performance of our group
+We now construct the data to draw the QQ plot to examine the performance of our groupings.
+
 ```{r}
 #aggregate the dta
-aggregate_customer <- cancelled.customers.train
+aggregate_customer <- segmented.customers
 aggregate_customer$segment.label <- ifelse(aggregate_customer$segment == 1,'sleeping',ifelse(aggregate_customer$segment == 2,'Cancelled',ifelse(aggregate_customer$segment == 3,'Active','Napping')
 ))
 aggregate_customer$status.label <- ifelse(aggregate_customer$lastStatus == 1,'Active User','Non-Active User')
 
 ```
 
+Compare the distribution of the original status and the clustering segment. 
+We want to see the differences of order completed based on their quantile distribution.
 
-Compare the distribution of the original status and the clustering segment. We want to see the differences of order completed based on their qunatile distribution.
 ```{r}
 # calculate the normal theoretical quantiles per group
 df1 <- ddply(.data = aggregate_customer, .variables = .(status.label,segment.label), function(dat){
@@ -439,23 +534,22 @@ ggplot(data = df2, aes(x = xq, y = lifespan.norm)) +
   labs(title = 'QQ plots', x = 'Normal Quantiles', y = 'lifespan Quantiles')+
   facet_grid(status.label ~ segment.label)
 ```
-
-
-#Based of the observation of the qunatile plot, we can notise that our clustering performance is great. 
+#Based of the observation of the quantile plot, we can notice that our clustering performance is great. 
 #Further explanation would be written later
 
 # Predicting via Random Forest
+- Using 70% of the `segmented.customers` dataset (with the users segmented into their groups) for training and the remaining 30% as the test set, we run the random forest function with our output variable as `segment`.
+ 
 ```{r, cache=TRUE}
 
 set.seed(1)
 # we create a 70:30 data partition from the subset of customers
-train.segments = sample(1:nrow(cancelled.customers.train), nrow(cancelled.customers.train)*2/3)
+train.segments = sample(1:nrow(segmented.customers), nrow(segmented.customers)*2/3)
 
-customer.segements.train <- cancelled.customers.train[train.segments, -4]
-customer.segements.test <- cancelled.customers.train[-train.segments, -4]
+customer.segements.train <- segmented.customers[train.segments, -4]
+customer.segements.test <- segmented.customers[-train.segments, -4]
 
 # Random Forest 
-
 customer.segements.rf <- randomForest(as.factor(customer.segements.train$segment) ~ . ,data=customer.segements.train, importance=TRUE, ntree=150)
 customer.segements.rf 
 #plotting the importance of the variables in the model
@@ -484,28 +578,7 @@ conf.mat.segments.svm
 # display the measurement of confusion martixs
 classMetrics(conf.mat.segments.svm)
 ```
-- The accuracy is only 73.99 %. Let us try tuning the model for better prediction rates
-
-```{r, cache=TRUE, eval=FALSE}
-#Parameter tuning - takes 30 minutes almost 
-customer.seg.svm.tuned <-tune.svm(customer.segements.train, as.factor(customer.segements.train$segment), gamma=c(0.1, 1, 10), cost=10^(-1:2))
-print(customer.seg.svm.tuned)
-```
-
-```{r, eval=FALSE}
-#View how the performance changes-  Darker regions indicate better accuracy.
-plot(customer.seg.svm.tuned)
-
-#Determine the prediction using the best model
-customer.seg.svm.best <- customer.seg.svm.tuned$best.model
-customer.seg.svm.best.pred <- predict(customer.seg.svm.best, customer.segements.test) 
-#print the confusion matrix
-conf.mat.svm.best<-table(customer.seg.svm.best.pred, customer.segements.test$segment)
-conf.mat.svm.best
-
-# display the measurement of confusion martixs
-classMetrics(conf.mat.svm.best)
-```
+- The accuracy is only 73.99 %. 
 
 ```{r, fig.height = 5, fig.width = 5}
 # Plotthe performance of each model
@@ -515,9 +588,6 @@ plot.roc(rs[[1]], col = "red", lty=2, main = "Task1 Cluster-Classification ROC")
 roc.Class1.svm <- multiclass.roc(customer.segements.test$segment, as.numeric(customer.segements.svm.pred))
 rs <- roc.Class1.svm[['rocs']]
 plot(rs[[1]], col = "green", lty = 3, add = TRUE)
-roc.Class1.svm.best <- multiclass.roc(customer.segements.test$segment, as.numeric(customer.seg.svm.best.pred))
-rs <- roc.Class1.svm.best[['rocs']]
-plot(rs[[1]], col = "blue", lty = 3, add = TRUE)
 ```
 
 # Second Method: classification
@@ -561,7 +631,7 @@ customer.classify<-transform(
 )
 
 #Summary of the customer classification pre-processed data set  
-kable(summary(customer.classify), digits = c(3, 3, 3, 3), format = "pandoc")
+kable(summary(customer.classify), digits = c(3, 3, 3, 3), format = "markdown")
 
 ```
 
@@ -582,7 +652,7 @@ customer.classify.test <- customer.classify[-classify.train,]
 
 ```{r,cache = true}
 # Logistic Regression
-customer.classify.logit <- glm(as.factor(status)~., data = customer.classify.train, family=binomial)
+customer.classify.logit <- glm(as.factor(status)~., data = customer.classify.train, family="binomial")
 customer.classify.logit.probs <- predict(customer.classify.logit, customer.classify.test, type="response")
 summary(customer.classify.logit)
 
@@ -709,7 +779,7 @@ customer.data.segOne <- customer.data %>% group_by(id) %>% filter(date == max(da
 customer.data.segOne <- subset(customer.data.segOne,select = c('pages','onsite', 'userType'))#, 'entered', 'completed'))
 
 #Summary of the customer classification for differnet user type  
-kable(summary(customer.data.segOne), digits = c(3, 3, 3, 3), format = "pandoc")
+kable(summary(customer.data.segOne), digits = c(3, 3, 3, 3), format = "markdown")
 
 #split into training and test dataset
 customer.data.segOne <- transform(
