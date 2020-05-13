@@ -537,9 +537,12 @@ ggplot(data = df2, aes(x = xq, y = lifespan.norm)) +
 #Based of the observation of the quantile plot, we can notice that our clustering performance is great. 
 #Further explanation would be written later
 
+
+
+- Using 70% of the `segmented.customers` dataset (with the users segmented into their groups) for training and the remaining 30% as the test set, we run the random forest and  SVM function with our output variable as `segment`.
+
 # Predicting via Random Forest
-- Using 70% of the `segmented.customers` dataset (with the users segmented into their groups) for training and the remaining 30% as the test set, we run the random forest function with our output variable as `segment`.
- 
+
 ```{r, cache=TRUE}
 
 set.seed(1)
@@ -563,7 +566,9 @@ customer.segements.rf.table
 # display the measurement of confusion martixs
 classMetrics(customer.segements.rf.table)
 ```
-#SVM performance for the above
+- We see an accuracy of 85.6% is obtained by using Random Forests to predict if a customer would leave the subscription. 
+
+#Predicting using SVM 
 
 ```{r}
 #Creating the model
@@ -578,10 +583,11 @@ conf.mat.segments.svm
 # display the measurement of confusion martixs
 classMetrics(conf.mat.segments.svm)
 ```
-- The accuracy is only 73.99 %. 
+- SVM provides an accuracy of approximately 74% for the same.
+- Hence we conclude that Random forests have a better performance in predicting if a customer will cancel their subscription in the near future based on different segments customer.
 
 ```{r, fig.height = 5, fig.width = 5}
-# Plotthe performance of each model
+# Plot the performance of each model
 roc.Class1.rf <- multiclass.roc(customer.segements.test$segment, as.numeric(customer.segements.rf.predict))
 rs <- roc.Class1.rf[['rocs']]
 plot.roc(rs[[1]], col = "red", lty=2, main = "Task1 Cluster-Classification ROC")
@@ -589,32 +595,73 @@ roc.Class1.svm <- multiclass.roc(customer.segements.test$segment, as.numeric(cus
 rs <- roc.Class1.svm[['rocs']]
 plot(rs[[1]], col = "green", lty = 3, add = TRUE)
 ```
+The above plot shows the ROC curves for the Random Forest (in red) and the SVM (in green).
+From the graph, we see that both Random Forests and SVM have almost similar sensitivity (true positive rate), with SVM very minutely varying at the beginning of the sensitivity-specificity threshold. 
 
-# Second Method: classification
+# Second Method: Classification on customer status based on statistical features 
+- Before developing the model, we first create a `customer.classify` dataset, that contains the statistical features (mean, median, standard deviation and skewness) and corresponding ratios for each customer as described below:
+
+|      Data Field       | Description                                                                         | 
+|-----------------------|-------------------------------------------------------------------------------------|
+|     `id`              | The unique identifier of the customer                                               |
+|     `date`            | The unique identifier of the customer                                               |
+|     `status`          | The final status of the customer taken from the `customer.lifespan` dataset.        |
+|     `pages`           | The total number of pages visited by each customer.                                 |
+|     `onsite`          | The total number of minutes spent on the site by each customer.                     |
+|     `entered`         | The total number of sender entered orders by each customer.                         |
+|     `completed`       | The total number of completed orders by each customer.                              |
+|     `holiday`         | The total number of holiday orders by each customer.                                |
+|     `gender`          | User gender ‘M’- male, ‘F’- female.                                                 |
+|     `avgOnsite`       | The average number of minutes spent on the site by each customer.                   |
+|     `medOnsite`       | The median of minutes spent on the site by each customer.                           |
+|     `sdOnsite`        | The standard deviation of minutes spent on the site by each customer.               |
+|     `skewOnsite`      | The skewness in minutes spent on the site by each customer.                         |
+|     `avgPages`        | The average number of pages visited by each customer.                               |
+|     `medPages`        | The median of pages visited by each customer.                                       |
+|     `sdPages`         | The standard deviation of pages visited by each customer.                           |
+|     `skewPages`       | The skewness of pages visited by each customer.                                     |
+|     `avgEntered`      | The average number of sender entered ecards by each customer.                       |
+|     `avgCompleted`    | The average number of completed orders by each customer.                            |
+|     `avgHoliday`      | The average number of holiday orders by each customer.                              |
+|     `enterPerPage`    | The average of entered by pages for each customer.                                  |
+|     `completePerEnter`| The ratio of total completed orders to entered for each customer.                   |
+|     `onsitePerEnter`  | The ratio of total onsite visits to entered ecards for each customer.               |
+|     `onsitePerPage`   | The average of onsite visits by pages for each customer.                            |
+|     `pagesPerHoliday` | The average of holidays orders by pages for each customer.                          |
+|     `onsitePerHoliday`| The average of onsite visits by pages for each customer.                            |
+|  `LastMonthOnsiteTime`| The onsite time in minutes for the last month visit by the customer.                |
+| `LastMonthPagesViewed`| The number of pages visited in the last month by each customer.                     |
+|-----------------------|-------------------------------------------------------------------------------------|
+
 
 ```{r}
+#group the selected columns based on the customer ID
 customer.classify <- customer.data[, c("id", "date", "status", "pages", "onsite", "entered", "completed", "holiday", "gender")] %>% group_by(id)
-customer.classify <-customer.classify %>% mutate(avgOnsite = mean(onsite))
-customer.classify <-customer.classify %>% mutate(medOnsite = median(onsite))
-customer.classify <-customer.classify %>% mutate(sdOnsite = sd(onsite))
-customer.classify <-customer.classify %>% mutate(skewOnsite = skewness(onsite))
-customer.classify <-customer.classify %>% mutate(avgPages = mean(pages))
-customer.classify <-customer.classify %>% mutate(medPages = median(pages))
-customer.classify <-customer.classify %>% mutate(sdPages = sd(pages))
-customer.classify <-customer.classify %>% mutate(skewPages = skewness(pages))
-customer.classify <-customer.classify %>% mutate(avgEntered = mean(entered))
-customer.classify <-customer.classify %>% mutate(avgCompleted = mean(completed))
-customer.classify <-customer.classify %>% mutate(avgHoliday = mean(holiday))
-customer.classify<-customer.classify %>% mutate(enterPerPage = mean(entered/pages, na.rm = TRUE))
-customer.classify<-customer.classify %>% mutate(completePerEnter = sum(completed)/sum(entered))
-customer.classify<-customer.classify %>% mutate(onsitePerEnter = sum(onsite)/sum(entered))
-customer.classify<-customer.classify %>% mutate(onsitePerPage = mean(onsite/pages, na.rm = TRUE))
-customer.classify<-customer.classify %>% mutate(pagesPerHoliday = mean(holiday/pages, na.rm = TRUE))
-customer.classify<-customer.classify %>% mutate(onsitePerHoliday = mean(holiday/onsite, na.rm = TRUE))
-customer.classify <-customer.classify %>% mutate(LastMonthOnsiteTime = tail(onsite, n=2)[1])
-customer.classify <-customer.classify %>% mutate(LastMonthPagesViewed = tail(pages, n=2)[1])
+#add to the data set, statistical features - mean, median, standard deviation and skewness
+customer.classify <-customer.classify %>% dplyr::mutate(avgOnsite = mean(onsite))
+customer.classify <-customer.classify %>% dplyr::mutate(medOnsite = median(onsite))
+customer.classify <-customer.classify %>% dplyr::mutate(sdOnsite = sd(onsite))
+customer.classify <-customer.classify %>% dplyr::mutate(skewOnsite = skewness(onsite))
+customer.classify <-customer.classify %>% dplyr::mutate(avgPages = mean(pages))
+customer.classify <-customer.classify %>% dplyr::mutate(medPages = median(pages))
+customer.classify <-customer.classify %>% dplyr::mutate(sdPages = sd(pages))
+customer.classify <-customer.classify %>% dplyr::mutate(skewPages = skewness(pages))
+customer.classify <-customer.classify %>% dplyr::mutate(avgEntered = mean(entered))
+customer.classify <-customer.classify %>% dplyr::mutate(avgCompleted = mean(completed))
+customer.classify <-customer.classify %>% dplyr::mutate(avgHoliday = mean(holiday))
+customer.classify<-customer.classify %>% dplyr::mutate(enterPerPage = mean(entered/pages, na.rm = TRUE))
+customer.classify<-customer.classify %>% dplyr::mutate(completePerEnter = sum(completed)/sum(entered))
+customer.classify<-customer.classify %>% dplyr::mutate(onsitePerEnter = sum(onsite)/sum(entered))
+customer.classify<-customer.classify %>% dplyr::mutate(onsitePerPage = mean(onsite/pages, na.rm = TRUE))
+customer.classify<-customer.classify %>% dplyr::mutate(pagesPerHoliday = mean(holiday/pages, na.rm = TRUE))
+customer.classify<-customer.classify %>% dplyr::mutate(onsitePerHoliday = mean(holiday/onsite, na.rm = TRUE))
+customer.classify <-customer.classify %>% dplyr::mutate(LastMonthOnsiteTime = tail(onsite, n=2)[1])
+customer.classify <-customer.classify %>% dplyr::mutate(LastMonthPagesViewed = tail(pages, n=2)[1])
 
-customer.classify <- customer.classify %>% distinct(id, .keep_all = TRUE)
+#Ensure the set only contains distinct values for ID
+customer.classify <- customer.classify %>% dplyr::distinct(id, .keep_all = TRUE)
+
+#add in the below columns from the aggregatedCustomerSums dataset
 customer.classify <- transform(
   customer.classify,
   status = aggregatedCustomerSums$status,
@@ -634,12 +681,14 @@ customer.classify<-transform(
 kable(summary(customer.classify), digits = c(3, 3, 3, 3), format = "markdown")
 
 ```
+We need to drop the `id` and `date` columns from the `customer.classify` dataset since we using these predictors will result in an incorrect model for our task.
 
 ```{r}
-#customer.classify.drop <- c("id","date","pages","onsite","entered","completed","holiday")
 customer.classify.drop <- c("id","date")
 customer.classify <- customer.classify[,!(names(customer.classify) %in% customer.classify.drop)]
 ```
+
+Now we define the training and test dataset, with the training data set containing 70% of the data and the test set 30%
 
 ```{r}
 # Classification method for task 1
@@ -650,24 +699,31 @@ customer.classify.train <- customer.classify[classify.train,]
 customer.classify.test <- customer.classify[-classify.train,]
 ```
 
+We build 4 models using Logistic Regression, Random Forests, Naive Bayes and SVM to predict if a customer would cancel their subscription or not. All these models use `status` as their output variable with all other variables acting as predictors.
+
+# Predicting using Logistic Regression
+
 ```{r,cache = true}
-# Logistic Regression
+#create the logistic regression model and use the model for predicting using the test set
 customer.classify.logit <- glm(as.factor(status)~., data = customer.classify.train, family="binomial")
 customer.classify.logit.probs <- predict(customer.classify.logit, customer.classify.test, type="response")
 summary(customer.classify.logit)
 
+#Using alpha as 0.5, classify predictions as 2 if the values are above 0.5
 customer.classify.logit.pred = rep("1",nrow(customer.classify.test))
 customer.classify.logit.pred[customer.classify.logit.probs>0.5] = "2"
 
+#Display the confusion matrix
 customer.classify.logit.table <- table(customer.classify.logit.pred, customer.classify.test$status)
 customer.classify.logit.table
 
 # display the measurement of confusion martixs
 classMetrics(customer.classify.logit.table)
 ```
+- The logistic regression has an accuracy of 83.53%. This is a good classification.
 
+# Predicting using Random Forest
 ```{r,cache = true}
-# Random Forest
 # build the random forest model for classification
 customer.classify.rf <- randomForest(status~., data=customer.classify.train, ntree=500, proximity=T,na.action = na.roughfix)
 customer.classify.rf
@@ -678,9 +734,11 @@ customer.classify.rf.table
 # display the measurement of confusion martixs
 classMetrics(customer.classify.rf.table)
 ```
+- The random forest model provides an accuracy of 80.32%. It does not perform as well as the Logistic Regression.
 
+# Predicting using Naive Bayes
 ```{r}
-# Naive Bayes
+# build the naive bayes model
 customer.classify.nb <-naiveBayes(status ~., data = customer.classify.train, laplace=1)
 summary(customer.classify.nb)
 customer.classify.nb.pred <- predict(customer.classify.nb, customer.classify.test)
@@ -691,9 +749,11 @@ customer.classify.nb.table
 # display the measurement of confusion martixs
 classMetrics(customer.classify.nb.table)
 ```
+- Accuracy attained using Naive Bayes is 68.62%. It it considerably low when compared to Random Forests and Naive Bayes.
 
+# Predicting using SVM
 ```{r}
-#SVM
+# create the SVM model
 customer.classify.svm <-svm(status~ . , data = customer.classify.train, type = 'C-classification', kernel = 'radial')
 customer.classify.svm.pred <- predict(customer.classify.svm, customer.classify.test)
 
@@ -703,6 +763,7 @@ customer.classify.svm.table
 # display the measurement of confusion martixs
 classMetrics(customer.classify.svm.table)
 ```
+- SVM appears to be the best model with an accuracy of 83.98% and overall metrics, with the logistic regression model following closely behind.
 
 ```{r, fig.height = 5, fig.width = 5}
 # Plotthe performance of each model
@@ -719,6 +780,8 @@ roc.Class2.svm <- multiclass.roc(customer.classify.test$status, as.numeric(custo
 rs <- roc.Class2.svm[['rocs']]
 plot(rs[[1]], col = "green", lty = 3, add = TRUE)
 ```
+The above plot shows the ROC curves for the Random Forest (in red), Logistic Regression (in black), Naive Bayes (in blue) and the SVM (in green).
+From the graph, we see that both Logistic Regression and SVM have almost similar sensitivity (true positive rate), with SVM very minutely having a higher sensitivity-specificity threshold with higher sensitivity/specificity. As specificity increases Random forests also meet the same level of sensitivity as Logistic Regression adn SVM. 
 
 
 ## 2.	Develop a model for estimating the ltv of a customer. Characterize your model performance.
